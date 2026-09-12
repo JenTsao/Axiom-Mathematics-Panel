@@ -1,3 +1,4 @@
+import os
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
@@ -7,6 +8,22 @@ import scipy.linalg as la
 import scipy.optimize as opt  # 优化模块
 import scipy.signal as sig  # 信号处理模块
 import scipy.stats as stats  # 统计模块
+
+try:
+    from mathlab.utils.logger import get_logger
+
+    logger = get_logger(__name__)
+except ImportError:
+    import logging
+
+    logger = logging.getLogger(__name__)
+
+# C# 数值后端（MathLab.CSharpEngine.FastMath）开关的环境变量名。
+# 实测（600×600 方阵）：C#/MathNet 路径慢于 SciPy/LAPACK 一至两个数量级
+# （Cholesky 493ms vs 4.9ms、Solve 510ms vs 10.5ms、Eigen 959ms vs 274ms），
+# 主要原因是 MathNet 托管实现 + 跨语言封送成本，故默认关闭。
+# 如需启用：设置 MATHLAB_CS_NUM_ENGINE=1，或 NumEngine(prefer_csharp=True)。
+CS_BACKEND_ENV = "MATHLAB_CS_NUM_ENGINE"
 
 
 # 采用五点中心差分手动实现，支持任意阶导数计算 (通过递归降阶)
@@ -35,11 +52,42 @@ class NumEngine:
     提供 Octave 级别的矩阵运算与数值分析接口。
     作为防腐层 (Anti-corruption Layer)，上层业务逻辑只需面向本类编程，
     底层 NumPy/SciPy 依赖的迭代不会污染核心业务逻辑。
+
+    可选 C# 后端：当 ``prefer_csharp=True`` 或环境变量 ``MATHLAB_CS_NUM_ENGINE=1``
+    时，``eigenvalues`` / ``cholesky`` / ``solve_linear_system`` 会优先调用
+    ``MathLab.CSharpEngine.FastMath``；任何失败都会自动回退 NumPy/SciPy。
     """
 
-    def __init__(self):
+    def __init__(self, prefer_csharp: Optional[bool] = None):
         # 预留配置项，例如设置默认的浮点数精度、随机数种子等
         self.default_tolerance = 1e-8
+
+        # C# 数值后端开关（默认关闭：实测 C# 路径慢于 SciPy/LAPACK，见模块头部说明）
+        if prefer_csharp is None:
+            prefer_csharp = os.environ.get(CS_BACKEND_ENV, "").strip().lower() in ("1", "true", "yes", "on")
+        self._prefer_csharp = bool(prefer_csharp)
+        self._cs_engine = None
+        self._cs_engine_probed = False
+
+    def _get_cs_engine(self):
+        """惰性获取 C# 数值引擎；未启用或不可用时返回 None（只探测一次）。"""
+        if not self._prefer_csharp:
+            return None
+
+        if not self._cs_engine_probed:
+            from mathlab.core.cs_num_engine import get_cs_num_engine
+
+            self._cs_engine = get_cs_num_engine()
+            self._cs_engine_probed = True
+            if self._cs_engine is None:
+                logger.warning("已请求 C# 数值后端，但引擎不可用（缺少 pythonnet 或未编译 DLL），回退 NumPy。")
+
+        return self._cs_engine
+
+    @property
+    def csharp_backend_enabled(self) -> bool:
+        """当前是否实际启用了 C# 数值后端（已请求且引擎可用）。"""
+        return self._get_cs_engine() is not None
 
     # ──────────────────────────────────────────────────────────────────────────
     # 线性代数模块 (Linear Algebra)
@@ -56,6 +104,15 @@ class NumEngine:
         mat = np.asarray(matrix, dtype=complex)
         if mat.ndim != 2 or mat.shape[0] != mat.shape[1]:
             raise NumEngineError("特征值计算需要输入方阵 (Square Matrix)。")
+
+        csharp = self._get_cs_engine()
+        # C# Flat 接口仅支持实数矩阵；含复数元素时交由 NumPy 处理，避免虚部被静默丢弃
+        if csharp is not None and not np.iscomplexobj(matrix):
+            try:
+                return csharp.eigenvalues(np.asarray(matrix, dtype=float))
+            except Exception as exc:
+                # C# 后端失败（如不支持的输入）时回退 NumPy
+                logger.debug("C# 特征值计算失败，回退 NumPy: %s", exc)
 
         vals, vecs = la.eig(mat)
         return {
@@ -100,6 +157,15 @@ class NumEngine:
         :raises NumEngineError: 矩阵非正定时抛出
         """
         mat = np.asarray(matrix, dtype=float)
+
+        csharp = self._get_cs_engine()
+        if csharp is not None:
+            try:
+                return csharp.cholesky(mat)
+            except Exception as exc:
+                # C# 后端失败（如非正定矩阵）时回退 NumPy，保持统一异常语义
+                logger.debug("C# Cholesky 失败，回退 NumPy: %s", exc)
+
         try:
             L = la.cholesky(mat, lower=True)
             return {"L": L}
@@ -121,6 +187,16 @@ class NumEngine:
         """
         mat_A = np.asarray(A, dtype=float)
         vec_b = np.asarray(b, dtype=float)
+
+        csharp = self._get_cs_engine()
+        # C# Flat 接口仅支持一维右端向量；矩阵右端项直接走 NumPy
+        if csharp is not None and mat_A.ndim == 2 and vec_b.ndim == 1:
+            try:
+                return csharp.solve_linear_system(mat_A, vec_b)
+            except Exception as exc:
+                # C# 后端失败（如奇异矩阵）时回退 NumPy，保持统一异常语义
+                logger.debug("C# 线性求解失败，回退 NumPy: %s", exc)
+
         try:
             x = la.solve(mat_A, vec_b)
             residual_norm = float(np.linalg.norm(mat_A @ x - vec_b))
