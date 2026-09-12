@@ -3,7 +3,7 @@
   <img src="https://img.shields.io/badge/python-3.10+-brightgreen.svg" alt="Python">
   <img src="https://img.shields.io/badge/PySide6-6.5+-red.svg" alt="PySide6">
   <img src="https://img.shields.io/badge/version-3.8.0-orange.svg" alt="Version">
-  <img src="https://img.shields.io/badge/tests-419%20passed-brightgreen.svg" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-444%20passed-brightgreen.svg" alt="Tests">
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg" alt="Platform">
 </p>
 
@@ -24,6 +24,7 @@
 - [🌟 核心亮点](#-核心亮点)
 - [✨ 功能特性](#-功能特性)
 - [🏗️ 系统架构](#-系统架构)
+- [⚙️ 计算内核体系](#计算内核体系)
 - [🎓 自适应学习系统](#-自适应学习系统)
 - [📚 教学法引导引擎](#-教学法引导引擎)
 - [🔄 结构化通信协议](#-结构化通信协议)
@@ -66,10 +67,10 @@ MathLab 3.8 完成了六大核心维度的跃迁，打造了"自动驾驶级别"
 | 🧊 **3D 渲染引擎**    | Three.js 可视化  | 曲面、向量场、等值面、GPU 分形                          |
 | 🧮 **CAS 符号计算**   | SymPy 封装      | 方程求解、微积分、极限、因式分解                           |
 | 📓 **交互笔记本**      | Cell 笔记本      | Markdown / 代码 / 公式 / 画板混排                  |
-| 🧠 **AI 多智能体系统**  | 11 家大模型接入     | OpenAI / DeepSeek / Claude / Gemini / 通义千问 |
+| 🧠 **AI 多智能体系统**  | 10 家大模型接入     | OpenAI / Claude / Gemini / DeepSeek / Kimi / 通义千问 / 智谱 / 豆包 / MiniMax / Ollama 本地 |
 | 🔌 **Jupyter 集成** | 内嵌 JupyterLab | Python 与 Qt 双向变量同步                         |
-| ⚡ **C# 加速内核**     | pythonnet 桥接  | 几何采样 / FFT / 复数 / 数值积分加速                   |
-| 🛡️ **安全沙箱**      | subprocess 隔离 | 超时与内存限制保护                                  |
+| ⚡ **C# 加速内核**     | pythonnet 桥接  | 几何求交 / FFT / 复数 / 数值积分 / 3D 网格；含可选数值后端（特征值·Cholesky·线性求解） |
+| 🛡️ **安全沙箱**      | 双沙箱架构       | 子进程沙箱（超时/内存/CPU 看门狗）+ Jupyter 内核沙箱（状态保持、富输出捕获）     |
 | 🧩 **插件系统**       | 可扩展 API       | 内置 3D Viewer、ECharts、矩阵工具、微积分工具、动画演示     |
 | 🎓 **自适应学习**      | 认知建模          | Bloom/ZPD/UDL 个性化教学                        |
 | 📚 **教学法引擎**      | 三维度评估         | 教学质量可控、教育原则约束                              |
@@ -127,7 +128,7 @@ MathLab 3.8 完成了六大核心维度的跃迁，打造了"自动驾驶级别"
 
 #### CASProvider（符号计算引擎）
 
-封装 SymPy 提供表达式化简、方程求解、微积分运算等功能。
+封装 SymPy 提供表达式化简、方程求解、微积分运算等功能；SymPy 采用惰性加载（首次使用时导入），自适应积分与数值微分会路由到 C# `FastCalculus`。
 
 #### Agent Registry & Tools（多智能体系统）
 
@@ -142,7 +143,47 @@ MathLab 3.8 完成了六大核心维度的跃迁，打造了"自动驾驶级别"
 
 #### Notebook（交互笔记本）
 
-SageMath 风格的 Cell 笔记本，支持 Markdown 和代码单元格的混合编排。
+SageMath 风格的 Cell 笔记本，支持 Markdown 和代码单元格的混合编排；每个笔记本持有独立的 `OctaveBridge` 计算内核（`MathLabNotebook.kernel`）。
+
+### 计算内核体系
+
+除几何引擎与符号引擎外，MathLab 的计算能力由四类内核构成：
+
+| 类别 | 内核 | 位置 | 说明 |
+| :--- | :--- | :--- | :--- |
+| **Python 计算内核** | `NumEngine` | `core/num_engine.py` | NumPy/SciPy 数值内核（防腐层）：线性代数、数值微积分、优化、信号处理、统计 |
+| | `OctaveBridge` | `core/octave_bridge.py` | MATLAB/Octave 语法桥接内核：语法翻译后在 `self.env` 工作区执行，带 `plot_requested` / `slider_requested` 信号 |
+| | `CASProvider` | `core/cas_provider.py` | SymPy 符号计算内核（懒加载 + 结果缓存） |
+| **C# 加速内核** | `FastGeometry`（`cs_geometry`） | `core/cs_geometry_engine.py` | 直线 / 圆求交，内存池化 |
+| | `FastCalculus`（`cs_calculus`） | `core/cs_calculus_engine.py` | 自适应积分、数值微分（Python 委托回调） |
+| | `FastFFT`（`cs_fft`） | `core/cs_fft_engine.py` | 频谱分析 |
+| | `FastComplex`（`cs_complex`） | `core/cs_complex_engine.py` | Mandelbrot / Julia 分形渲染 |
+| | `FastMesh3D`（`cs_mesh_3d`） | `core/cs_mesh_engine.py` | 3D 波纹曲面网格生成 |
+| | `FastMath`（`CsNumEngine`） | `core/cs_num_engine.py` | 特征值 / Cholesky / 线性求解；**可选**数值后端，默认关闭（见下文） |
+| **沙箱执行内核** | `SandboxProcess` / `SandboxManager` | `core/sandbox.py` | 独立 Python 子进程 + JSON IPC + 看门狗线程（超时/内存/CPU）+ AST 白名单校验，服务 Python 控制台 |
+| | `JupyterSandbox` | `core/jupyter_manager.py` | 真正的 ipykernel 内核（jupyter_client）：状态保持、超时中断、富文本/图像输出捕获、内存监控 |
+| **几何内核** | `GeometryEngine` | `core/geometry_engine.py` | 主画板内核：Qt 信号 + DAG 依赖传播 + 最小二乘约束求解 |
+| | `GeometryEngine`（GeoGebra 版） | `core/geogebra_engine.py` | Mini GeoGebra 面板的独立 `GeoEntity` 父子依赖树内核 |
+
+#### 可选 C# 数值后端（FastMath）
+
+`NumEngine` 的 `eigenvalues` / `cholesky` / `solve_linear_system` 可切换到 C# `FastMath` 实现，任何失败都会自动回退到 NumPy/SciPy：
+
+```bash
+# 环境变量启用
+set MATHLAB_CS_NUM_ENGINE=1        # Windows
+export MATHLAB_CS_NUM_ENGINE=1     # macOS / Linux
+```
+
+```python
+# 或在代码中显式启用
+from mathlab.core.num_engine import NumEngine
+
+engine = NumEngine(prefer_csharp=True)
+print(engine.csharp_backend_enabled)   # True（引擎可用时）
+```
+
+> ⚠️ **默认关闭的原因**：实测 C#/MathNet 路径慢于 SciPy/LAPACK（600×600 方阵：Cholesky 61.7ms vs 7.3ms、线性求解 79.7ms vs 8.2ms、特征值 1212ms vs 904ms），瓶颈在 MathNet 托管实现与 pythonnet 跨语言封送。该后端定位为"可切换 / 可降级"能力，而非默认加速路径；在缺少 SciPy 的环境中可作为备用实现。
 
 ***
 
@@ -245,10 +286,11 @@ PlannerAgent → (TASK_PROGRESS) → 广播给所有订阅者
 
 | 项目         | 要求                                  |
 | :--------- | :---------------------------------- |
-| **Python** | 3.10 或更高版本                          |
+| **Python** | 3.10 或更高版本（CI 与 MyPy 基线为 3.11）      |
 | **操作系统**   | Windows 10+、macOS 12+、Ubuntu 20.04+ |
 | **内存**     | 建议 8GB 以上                           |
 | **磁盘空间**   | 至少 2GB 可用空间                         |
+| **可选**     | .NET SDK（编译 C# 加速内核）、JupyterLab（内嵌工作区） |
 
 ### 安装步骤
 
@@ -268,13 +310,19 @@ venv\Scripts\activate
 # macOS / Linux
 source venv/bin/activate
 
-# 4. 安装依赖
-pip install -r mathlab/requirements.txt
+# 4. 安装依赖（根目录清单与 CI 一致；mathlab/requirements.txt 为打包用清单）
+pip install -r requirements.txt
 
-# 5.（可选）安装可选依赖：AI / 神经网络 / 高级可视化
+# 5.（可选）安装可选依赖：AI 拟合 / 神经网络 / 高级可视化
+#    方式一：extras 安装（等价于 mathlab[ai|neural|visualization|full]）
+pip install -e "./mathlab[full]"
+#    方式二：使用可选依赖清单
 pip install -r mathlab/requirements-optional.txt
 
-# 6. 安装开发工具（可选）
+# 6.（可选）编译 C# 加速内核（需要 .NET SDK；未编译时相关模块自动降级，不影响启动）
+dotnet build MathLab.CSharpEngine/MathLab.CSharpEngine.csproj -c Release
+
+# 7. 安装开发工具（可选）
 pip install pre-commit
 pre-commit install
 ```
@@ -299,19 +347,25 @@ python -m mathlab
 
 ### 快速验证
 
-启动后，在命令面板中输入以下命令验证安装：
+启动后，在底部 **Python 控制台**（或 Jupyter 工作区）中输入以下命令验证安装——这些快捷函数由 `python_repl.update_namespace()` 注入：
 
 ```python
-# 测试几何引擎
-draw_point("A", 0, 0)
-draw_point("B", 3, 4)
-draw_line("AB", "A", "B")
+# ── 测试几何引擎（坐标参数；返回对象 ID，名称自动生成如 P1/P2）──
+p1 = draw_point(0, 0)
+p2 = draw_point(3, 4)
+draw_segment(p1, p2)          # 用对象 ID 连接线段
+draw_circle(p1, 2.5)          # 以 p1 为圆心、半径 2.5
 
-# 测试 CAS
+# ── 测试函数绘图 ──
+plot_function("sin(x)/x", x_range=(-10, 10))
+
+# ── 测试 CAS（返回 dict：solutions 为 LaTeX 列表，raw_solutions 为 SymPy 结果）──
 from mathlab.core.cas_provider import CASProvider
+
 cas = CASProvider()
 result = cas.solve_equation("x**2 - 4", "x")
-print(result)  # 应输出 [-2, 2]
+print(result["raw_solutions"])   # [-2, 2]
+print(result["solutions"])       # ['-2', '2']
 ```
 
 ***
@@ -321,23 +375,23 @@ print(result)  # 应输出 [-2, 2]
 ### 运行测试
 
 ```bash
-# 运行所有测试
-cd mathlab
-python -m pytest tests/ -v
+# 运行全部测试（在仓库根目录执行；testpaths 已在 pyproject.toml 指定）
+python -m pytest
 
-# 运行特定测试文件
-python -m pytest tests/test_geometry.py -v
+# 跳过慢测试与端到端测试（CI 采用的方式）
+python -m pytest -m "not slow and not e2e"
 
-# 运行带标记的测试
-python -m pytest -m "not slow"
+# 运行特定目录 / 文件
+python -m pytest mathlab/tests/unit/
+python -m pytest mathlab/tests/unit/test_num_engine.py -v
 
-# 生成覆盖率报告
-python -m pytest --cov=mathlab tests/
+# 覆盖率报告（addopts 已默认启用，产物输出到 test-results/）
+python -m pytest --cov=mathlab --cov-report=term-missing
 ```
 
 ### 测试配置
 
-测试配置位于 `pyproject.toml`：
+测试配置位于根目录 `pyproject.toml`：
 
 ```toml
 [tool.pytest.ini_options]
@@ -345,21 +399,34 @@ testpaths = ["mathlab/tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
-addopts = "-v --tb=short --strict-markers"
+addopts = [
+    "-v",
+    "--tb=short",
+    "--strict-markers",
+    "--junitxml=test-results/results.xml",
+    "--cov=mathlab",
+    "--cov-report=term-missing",
+    "--cov-report=html:test-results/coverage",
+    "--cov-report=xml:test-results/coverage.xml",
+    "--cov-branch",
+]
 markers = [
-    "slow: marks tests as slow",
+    "unit: fast isolated unit tests",
+    "integration: multi-component integration tests",
+    "e2e: end-to-end UI tests requiring Qt event loop",
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "qt: marks tests that require Qt event loop",
 ]
 ```
 
 ### 测试分类
 
-| 类别    | 说明      | 命令                          |
-| :---- | :------ | :-------------------------- |
-| 单元测试  | 核心引擎测试  | `pytest tests/unit/`        |
-| 集成测试  | 模块间交互测试 | `pytest tests/integration/` |
-| UI 测试 | Qt 界面测试 | `pytest -m qt tests/`       |
-| 性能测试  | 性能基准测试  | `pytest -m slow tests/`     |
+| 类别      | 说明                     | 命令                                                         |
+| :------ | :--------------------- | :--------------------------------------------------------- |
+| 单元测试    | 引擎、模型与后端               | `pytest mathlab/tests/unit/`                               |
+| 集成测试    | 模块间交互（几何 DAG、Octave/NumEngine） | `pytest mathlab/tests/integration/`                        |
+| 端到端测试   | 需要 Qt 事件循环的面板流程        | `pytest mathlab/tests/e2e/ -m e2e`                         |
+| 架构与插件测试 | 架构重构、P0 插件功能回归         | `pytest mathlab/tests/test_architecture_refactor.py mathlab/tests/test_plugin_p0.py` |
 
 ### 新增测试覆盖（3.8）
 
@@ -369,9 +436,11 @@ markers = [
 | `pedagogical_engine.py` | 32 项     | 97% |
 | `agent_message.py`      | 26 项     | 90% |
 | `plugins/calculus_tools` + `plugins/animation_studio` | 32 项 | 88% / 62% |
-| **新增小计**                  | **126 项** | —   |
+| `num_engine_backend`（3.8.x 新增） | 21 项 | C# 后端开关/路由/失败回退 + 真实引擎一致性 |
+| **新增小计**                  | **147 项**（3.8 新增 126 项 + 3.8.x 新增 21 项） | —   |
 
-> 全量测试规模：22 个测试文件，约 **419** 个测试用例（unit / integration / e2e 分层）。
+> 全量测试规模：**23 个测试文件、444 个测试用例**（unit / integration / e2e 分层），CI 以 `-m "not slow and not e2e"` 执行。
+> 其中 `test_num_engine_backend.py` 含 6 项"真实 C# 引擎"测试：本地具备 pythonnet + DLL 时执行、CI 自动跳过，用于防止静默回退掩盖后端故障。
 
 ***
 
@@ -408,21 +477,29 @@ pre-commit install
 
 ### 代码规范
 
-- **格式化**：使用 `black` 进行代码格式化
-- **Lint**：使用 `ruff` 进行代码检查
-- **类型注解**：推荐使用 type hints
-- **文档字符串**：使用 Google 风格
+项目使用与 CI 完全一致的工具链（配置文件：`.flake8`、`.pylintrc`、`mypy.ini`、`.bandit`）：
+
+| 工具                   | 用途                | CI 命令                                                       |
+| :------------------- | :---------------- | :---------------------------------------------------------- |
+| **Black**            | 代码格式化（120 列）      | `black mathlab/ --check --line-length=120`                  |
+| **isort**            | 导入排序（black profile） | `isort mathlab/ --check-only --profile black`               |
+| **Flake8**           | 风格检查              | `flake8 mathlab/ --max-line-length=120 --extend-ignore=E203,W503,E501` |
+| **Pylint**           | 静态分析（评分门限 5.0）    | `pylint mathlab/ --rcfile=.pylintrc --disable=R,C`          |
+| **MyPy**             | 类型检查              | `mypy mathlab/ --config-file mypy.ini`                      |
+| **Bandit / Safety**  | 安全扫描 / 依赖漏洞       | `bandit -r mathlab/ -c .bandit`                             |
 
 ```bash
-# 格式化代码
-black mathlab/
+# 格式化（与 CI 相同的参数）
+black mathlab/ --line-length=120
+isort mathlab/ --profile black
 
-# 代码检查
-ruff check mathlab/
-
-# 类型检查（可选）
-mypy mathlab/
+# 风格、类型与安全检查
+flake8 mathlab/ --max-line-length=120 --extend-ignore=E203,W503,E501
+mypy mathlab/ --config-file mypy.ini
+bandit -r mathlab/ -c .bandit
 ```
+
+> 提示：Black（120 列）与 isort（profile black，默认 88 列）对 import 行长度的要求不同，超长的 `from x import (...)` 建议使用「多行 + 尾逗号」写法，可同时通过两项检查。
 
 ### 调试技巧
 
@@ -466,79 +543,92 @@ chore: 构建/工具相关
 
 ```
 Axiom-Mathematics-Panel/
-├── MathLab.CSharpEngine/             # C# 加速内核（通过 pythonnet 桥接）
-│   ├── FastMath.cs                   # 基础数学运算
-│   ├── FastGeometry.cs               # 几何加速计算
-│   ├── FastComplex.cs                # 复数运算
+├── MathLab.CSharpEngine/             # C# 加速内核（pythonnet 桥接，6 个 Fast* 类）
+│   ├── FastMath.cs                   # 数值：特征值 / Cholesky / 线性方程组
+│   ├── FastGeometry.cs               # 几何：直线·圆求交（内存池化）
+│   ├── FastCalculus.cs               # 数值微积分（自适应积分 / 微分）
 │   ├── FastFFT.cs                    # 快速傅里叶变换
-│   ├── FastCalculus.cs               # 数值微积分
-│   ├── FastMesh3D.cs                 # 3D 网格生成
-│   └── MathLab.CSharpEngine.csproj   # C# 项目文件
-├── mathlab/                          # 主包目录
-│   ├── __init__.py                   # 包初始化（延迟导入）
-│   ├── main.py                       # 应用入口
-│   ├── setup.py                      # setuptools 配置
-│   ├── build_spec.spec               # PyInstaller 打包配置
-│   ├── config/                       # 配置文件
-│   │   ├── settings.json             # 默认配置
-│   │   ├── ai_providers.json         # AI 提供商配置
-│   │   ├── ai_tools_schema.py        # AI 工具 schema
-│   │   └── prompts.yaml              # 提示词模板（含教学法模板库）
-│   ├── core/                         # 核心引擎
-│   │   ├── agent_bridge.py           # Agent 桥接
-│   │   ├── agent_message.py          # 结构化通信协议（ACP）
-│   │   ├── agent_registry.py         # 多智能体注册表（含消息总线）
-│   │   ├── ai_manager.py             # AI 管理器（含 Worker）
-│   │   ├── ai_provider_config.py      # AI 提供商配置
-│   │   ├── ai_tools.py               # AI 工具定义
-│   │   ├── algo_animator.py          # 算法动画器
-│   │   ├── animation.py              # 动画引擎
-│   │   ├── async_workers.py          # 异步工作线程
-│   │   ├── canvas_tracker.py         # 画布状态追踪
-│   │   ├── cas_provider.py           # CAS 符号计算（SymPy）
-│   │   ├── command_manager.py        # 命令管理器
-│   │   ├── context_assembler.py      # JIT 上下文组装器
-│   │   ├── cs_*_engine.py            # C# 引擎桥接（6 个）
-│   │   ├── error_manager.py          # 全局错误管理器
-│   │   ├── extension_api.py          # 插件扩展 API
-│   │   ├── geogebra_engine.py        # GeoGebra 兼容引擎
-│   │   ├── geometry_engine.py        # 几何引擎核心（DAG）
-│   │   ├── geometry_helpers.py        # 几何辅助函数
-│   │   ├── ipc_client.py             # IPC 客户端
-│   │   ├── ipc_server.py             # IPC 服务端
-│   │   ├── jupyter_manager.py        # Jupyter 管理器
-│   │   ├── memory_manager.py         # 内存管理器
-│   │   ├── notebook.py               # 笔记本核心
-│   │   ├── num_engine.py             # 数值计算引擎
-│   │   ├── octave_bridge.py          # Octave 桥接
-│   │   ├── pedagogical_engine.py     # 教学法引导引擎
-│   │   ├── plugin_base.py            # 插件基类
-│   │   ├── plugin_manager.py         # 插件管理器
-│   │   ├── prompt_manager.py         # 提示词管理器
-│   │   ├── python_repl.py            # Python REPL 子进程
-│   │   ├── sandbox.py                # 沙盒环境
-│   │   ├── sandbox_script.py         # 沙盒脚本
-│   │   ├── sandbox_security.py       # 沙盒安全策略
-│   │   ├── signals.py                # Qt 信号定义
-│   │   ├── skill_manager.py          # AI 技能管理器
-│   │   ├── smart_guides.py           # 智能辅助线
-│   │   └── student_model.py          # 学生认知模型与自适应引擎
-│   ├── data/                         # 数据层
+│   ├── FastComplex.cs                # 复数运算与分形
+│   ├── FastMesh3D.cs                 # 3D 网格 / 波纹曲面
+│   ├── MathLab.CSharpEngine.csproj   # C# 项目文件
+│   └── bin/{Release,Debug}/netstandard2.0/   # 编译产物
+├── mathlab/                          # 主包（152 个 .py，约 3.6 万行）
+│   ├── main.py                       # 应用入口（含 frozen 打包资源定位）
+│   ├── __init__.py                   # 延迟导入门面（导出 8 个核心类）
+│   ├── setup.py                      # setuptools 配置（extras: ai / neural / visualization / full）
+│   ├── build_spec.spec               # 包内 PyInstaller 配置
+│   ├── settings.json                 # 运行配置（ipc / ai / sandbox / jupyter / theme / language）
+│   ├── requirements.txt              # 打包依赖清单
+│   ├── requirements-optional.txt     # 可选依赖（sklearn / torch / onnxruntime / matplotlib / pyqtgraph）
+│   ├── config/                       # ai_providers.json（10 家提供商）/ prompts.yaml / ai_tools_schema.py
+│   ├── core/                         # 核心层（55 个模块）
+│   │   ├── geometry_engine.py        # 几何内核：DAG 依赖 + Qt 信号 + 最小二乘约束求解
+│   │   ├── models/                   # 几何模型子包（base / point / line / circle / conic / function / locus / polygon / dag）
+│   │   ├── num_engine.py             # 数值内核（NumPy/SciPy，可切换 C# 后端）
+│   │   ├── octave_bridge.py          # MATLAB/Octave 语法桥接内核
+│   │   ├── cas_provider.py           # 符号计算内核（SymPy 懒加载 + 缓存）
+│   │   ├── cs_*_engine.py            # 6 个 C# 内核封装（geometry / calculus / fft / complex / mesh / num）
+│   │   ├── sandbox.py                # 子进程沙箱 + SandboxManager
+│   │   ├── sandbox_script.py         # 沙箱子进程入口（受限执行）
+│   │   ├── sandbox_security.py       # AST 代码安全扫描
+│   │   ├── jupyter_manager.py        # JupyterLab 服务器 + JupyterSandbox（ipykernel）
+│   │   ├── ai_manager.py             # AI 管理器 + 多 Agent（Planner / Geometry / DataViz）
+│   │   ├── ai_tools.py               # LLM 工具 schema 与校验
+│   │   ├── ai_facade.py              # 统一 AI 任务门面
+│   │   ├── agent_message.py          # 结构化通信协议（ACP 消息总线）
+│   │   ├── agent_registry.py         # 多智能体注册表
+│   │   ├── agent_bridge.py           # Agent 后台任务 ↔ UI 桥
+│   │   ├── student_model.py          # 学生认知模型 + AdaptiveEngine
+│   │   ├── pedagogical_engine.py     # 教学法引擎（Bloom/ZPD/UDL + 质量评估）
+│   │   ├── plugin_base.py            # 插件抽象基类
+│   │   ├── plugin_manager.py         # 插件扫描 / 激活 / 卸载
+│   │   ├── extension_api.py          # 插件安全 API（MathLabAPI）
+│   │   ├── async_workers.py          # QRunnable 任务框架（TaskManager）
+│   │   ├── canvas_tracker.py         # 画布语义追踪（AI 可读 JSON）
+│   │   ├── command_manager.py        # 全局命令注册中心
+│   │   ├── context_assembler.py      # JIT 上下文组装
+│   │   ├── memory_manager.py         # 对话记忆窗口裁剪
+│   │   ├── algo_animator.py          # 算法动画（networkx 可选）
+│   │   ├── animation.py              # Manim 风格绘制动画
+│   │   ├── error_manager.py          # 全局异常 / 崩溃报告 / 自动保存
+│   │   ├── ipc_client.py / ipc_server.py     # UDP IPC（画板 ↔ 内核）
+│   │   ├── geogebra_engine.py        # Mini GeoGebra 依赖引擎
+│   │   ├── geometry_helpers.py / smart_guides.py   # 磁吸与辅助线
+│   │   ├── skill_manager.py / prompt_manager.py    # 技能库与提示词
+│   │   ├── python_repl.py            # Python REPL（命名空间注入）
+│   │   ├── notebook.py               # 笔记本数据模型
+│   │   └── signals.py                # Qt 信号集中定义
+│   ├── ui/                           # 界面层（39 个模块）
+│   │   ├── main_window.py            # 主窗口（组合 8 个 Mixin）
+│   │   ├── _mixin_*.py               # 布局 / 菜单 / 信号 / 命令 / AI / 文件 / 对话框
+│   │   ├── canvas.py                 # 几何画布（网格 / 缩放 / LaTeX 渲染）
+│   │   ├── algebra_panel.py / properties_panel.py   # 代数列表与属性面板
+│   │   ├── notebook_panel.py / markdown_cell.py / code_editor.py  # 笔记本与 Monaco 编辑器
+│   │   ├── ai_tools_panel.py / latex_chat_widget.py # AI 面板与 LaTeX 聊天渲染
+│   │   ├── jupyter_panel.py / omni_bar.py / command_bar.py        # Jupyter、Omni-Bar、命令面板
+│   │   ├── function_explorer_panel.py / signal_lab_panel.py / fractal_gpu_panel.py
+│   │   ├── geogebra_canvas.py / geogebra_algebra_panel.py / geometry_panel.py
+│   │   ├── algo_vis_panel.py / math_console.py / console.py / quiz_panel.py
+│   │   └── styles.qss                 # 主题样式表
+│   ├── plugins/                      # 内置插件（5 个）
+│   │   ├── plugin_3d_viewer/         # Three.js 3D 画板 v2.0.0（使用 C# FastMesh3D）
+│   │   ├── calculus_tools/           # 微积分工具（导数 / 积分 / 极限 / 泰勒）
+│   │   ├── animation_studio/         # 动画演示（平移 / 旋转 / 缩放 / 参数动画）
+│   │   ├── echarts_viewer/           # ECharts 数据可视化
+│   │   └── matrix_tools/             # 矩阵工具
+│   ├── utils/                        # 工具层（9 个模块：logger / config_manager / i18n / theme / latex_renderer / markdown_service / version 等）
+│   ├── data/                         # 数据层（project.py / file_manager.py）
+│   ├── tests/                        # 测试（unit 18 / integration 2 / e2e 1 + 顶层 2 = 23 个测试文件）
+│   ├── locale/                       # 国际化（zh.json / en.json）
+│   ├── resources/                    # 前端资源（WebView JS/TS、图标、HTML、KaTeX）
 │   ├── docs/                         # 项目文档
-│   ├── locale/                       # 国际化
-│   ├── plugins/                      # 内置插件
-│   ├── resources/                    # 资源文件
-│   ├── tests/                        # 测试用例
-│   ├── ui/                           # 用户界面
-│   ├── utils/                        # 工具函数
-│   ├── scripts/                      # 脚本工具
-│   ├── requirements.txt              # 核心依赖
-│   └── requirements-optional.txt     # 可选依赖（AI/3D）
-├── .github/                          # GitHub 配置
-│   └── workflows/                    # CI/CD 工作流
-├── DOCS/                             # 开发文档
-├── pyproject.toml                    # pytest 配置
-├── mathlab.spec                      # PyInstaller 配置
+│   └── scripts/                      # update_i18n.py 等辅助脚本
+├── .github/workflows/                # CI：test.yml / code-quality.yml / release.yml / _build-setup.yml
+├── .vscode/                          # 编辑器配置
+├── .flake8 / .pylintrc / .bandit / mypy.ini      # 质量工具配置
+├── pyproject.toml                    # pytest 与覆盖率配置
+├── requirements.txt                  # 根依赖清单（CI 使用）
+├── mathlab.spec                      # 根目录 PyInstaller 配置
 ├── LICENSE                           # CASAL v4.0 许可证
 └── README.md                         # 项目说明（本文档）
 ```
@@ -551,20 +641,26 @@ Axiom-Mathematics-Panel/
 
 | 类别           | 技术       | 版本     | 用途                             |
 | :----------- | :------- | :----- | :----------------------------- |
-| **GUI 框架**   | PySide6  | ≥6.5.0 | Qt for Python，跨平台桌面 UI         |
+| **GUI 框架**   | PySide6  | ≥6.5.0 | Qt for Python，跨平台桌面 UI（含 WebEngine Addons） |
 | **符号计算**     | SymPy    | ≥1.12  | CAS 符号计算引擎                     |
 | **数值计算**     | NumPy    | ≥1.26  | 数组运算、线性代数                      |
 | **科学计算**     | SciPy    | ≥1.11  | 高级数值算法（含 `least_squares` 约束求解） |
-| **图论**       | NetworkX | ≥3.1   | 图数据结构与算法                       |
+| **图论（可选）**  | NetworkX | ≥3.1   | 算法动画演示图生成（缺失时自动降级）             |
 | **代码补全**     | Jedi     | ≥0.19  | Python 代码智能提示                  |
-| **进程监控**     | psutil   | ≥5.9   | 系统资源监控                         |
+| **进程监控**     | psutil   | ≥5.9   | 沙箱资源监控（超时/内存/CPU）              |
 | **HTTP 客户端** | requests | ≥2.31  | Jupyter IPC 与云端调用              |
+| **机器学习**     | scikit-learn | 任意  | AI 拟合与聚类                       |
+| **绘图**       | matplotlib / pyqtgraph | — | 图表与实时曲线                        |
+| **LLM 客户端**  | openai   | ≥1.0   | 多提供商大模型接入（兼容 OpenAI 协议）        |
+| **配置与渲染**    | PyYAML / markdown / Pygments | — | 提示词模板、Markdown 渲染、语法高亮         |
+| **Jupyter**  | jupyterlab / jupyter\_client / ipykernel / jupyter\_server | — | 内嵌 JupyterLab 与内核沙箱            |
+| **Python ↔ .NET** | pythonnet | ≥3.0 | C# 加速内核桥接（缺失时自动降级）             |
 
 ### AI 集成（多提供商）
 
 | 组件                                                | 用途           |
 | :------------------------------------------------ | :----------- |
-| OpenAI / DeepSeek / Claude / Gemini / 通义千问 等 11 家 | 大语言模型接入（可插拔） |
+| OpenAI / Claude / Gemini / DeepSeek / Kimi / MiniMax / 通义千问 / 智谱 / 豆包 / Ollama（共 10 家） | 大语言模型接入（可插拔，配置见 `mathlab/config/ai_providers.json`） |
 | Function Calling                                  | 工具调用协议       |
 | Streaming                                         | 流式响应         |
 
@@ -589,22 +685,25 @@ pip install mathlab[full]
 | 模块                                         | 用途                    |
 | :----------------------------------------- | :-------------------- |
 | `MathLab.CSharpEngine` (.NET Standard 2.0) | 通过 pythonnet 桥接的本地加速库 |
-| FastMath                                   | 基础数学运算                |
-| FastGeometry                               | 几何加速计算（圆锥曲线采样等）       |
-| FastComplex                                | 复数运算                  |
-| FastFFT                                    | 快速傅里叶变换               |
-| FastCalculus                               | 数值微积分                 |
-| FastMesh3D                                 | 3D 网格生成               |
-| MathNet.Numerics                           | C# 数值计算基础库            |
+| FastGeometry                               | 几何求交（直线 / 圆），内存池化                                                          |
+| FastCalculus                               | 自适应数值积分与微分（Python 委托回调）                                                    |
+| FastComplex                                | 复数运算与分形渲染                                                                 |
+| FastFFT                                    | 快速傅里叶变换                                                                   |
+| FastMesh3D                                 | 3D 网格 / 波纹曲面生成                                                            |
+| FastMath                                   | 特征值 / Cholesky / 线性方程组；**可选**数值后端，默认关闭（详见「计算内核体系 · 可选 C# 数值后端」）         |
+| MathNet.Numerics                           | C# 数值计算基础库                                                                |
+
+> C# 内核未编译或环境缺少 pythonnet 时，各 `cs_*_engine` 模块会安全降级（导入不抛异常），对应功能回退到 Python 实现或提示不可用。
 
 ### 开发工具
 
-| 工具                   | 用途           |
-| :------------------- | :----------- |
-| pytest               | 单元测试         |
-| pre-commit           | Git hooks    |
-| PyInstaller / Nuitka | 应用打包         |
-| TypeScript + Webpack | WebView 前端构建 |
+| 工具                                  | 用途                                             |
+| :---------------------------------- | :--------------------------------------------- |
+| pytest / pytest-qt / pytest-cov     | 单元与 UI 测试、覆盖率报告                                |
+| black / isort / flake8 / pylint / mypy | 格式化、导入排序、风格、静态分析、类型检查                       |
+| bandit / safety                     | 安全扫描与依赖漏洞检查                                    |
+| PyInstaller                         | 应用打包（`mathlab.spec` 或 `mathlab/build_spec.spec`） |
+| pre-commit                          | Git hooks（可选）                                   |
 
 ***
 
@@ -616,7 +715,7 @@ MathLab 支持插件扩展，内置以下插件：
 
 | 插件                     | 功能                                                            |
 | :--------------------- | :---------------------------------------------------------- |
-| **3D Viewer**          | 参数曲面、隐函数曲面、向量场可视化、交互式旋转/缩放                                  |
+| **3D Viewer**（v2.0.0） | 参数曲面、隐函数曲面、向量场可视化、交互式旋转/缩放；60FPS 波纹曲面（C# FastMesh3D）+ Three.js 渲染 |
 | **ECharts Viewer**     | 柱状图、折线图、饼图、散点图、热力图、实时数据更新                                   |
 | **Matrix Tools**       | 矩阵可视化、特征值/特征向量、SVD 分解、矩阵运算                                  |
 | **Calculus Tools**     | 导数与切线、定积分（带阴影区域）、极限、泰勒展开；计算结果可一键绘制到几何画板                     |
@@ -658,27 +757,39 @@ MathLab 支持插件扩展，内置以下插件：
 ```python
 from mathlab.core.plugin_base import MathLabPlugin
 
+
 class MyPlugin(MathLabPlugin):
-    """自定义插件示例"""
+    """自定义插件示例
 
-    def __init__(self, api):
-        super().__init__(api)
-        self.name = "My Plugin"
-        self.version = "1.0.0"
+    放置位置：``mathlab/plugins/<插件目录>/main.py``。
+    ``PluginManager`` 会 importlib 导入该模块并**无参实例化**，
+    随后以插件专属的 ``MathLabAPI`` 调用 ``on_activate(api)``。
+    """
 
-    def activate(self):
-        """插件激活时调用"""
-        self.api.register_command("my_command", self.my_handler)
+    name = "My Plugin"        # 类属性，不是构造函数参数
+    version = "1.0.0"
+    author = "Your Name"
+    description = "插件说明"
 
-    def deactivate(self):
-        """插件停用时调用"""
-        self.api.unregister_command("my_command")
+    def on_activate(self, api):
+        """激活：注册命令 / 添加侧边栏面板"""
+        self.api = api
+        api.register_command("my.command", "示例命令", self.my_handler, "我的分类")
+        api.print_to_console("MyPlugin 已激活", "info")
+
+    def on_deactivate(self):
+        """停用：释放插件持有的定时器、监听器等资源。
+
+        命令与面板由 api.cleanup() 统一注销，无需逐个反注册。
+        """
+        pass
 
     def my_handler(self, *args):
         """命令处理器"""
-        # 你的逻辑
-        pass
+        print("Hello from MyPlugin")
 ```
+
+> ⚠️ 两个易错点：① 插件**必须能被无参构造**（`MyPlugin()`），不要定义带参数的 `__init__`；② 生命周期方法是 `on_activate` / `on_deactivate`，而非 `activate` / `deactivate`，且 `MathLabAPI` **没有** `unregister_command` 方法（清理由 `api.cleanup()` 完成）。
 
 ***
 
@@ -692,13 +803,17 @@ MathLab 作为标准 Python 包暴露顶级类，支持按需延迟加载避免�
 import mathlab
 
 # 延迟加载核心类（仅在访问时触发实际导入）
+window = mathlab.MainWindow()          # 需配合 QApplication 使用
 geometry = mathlab.GeometryEngine()
 cas = mathlab.CASProvider()
 ai = mathlab.AIManager()
 repl = mathlab.PythonREPL()
 project = mathlab.ProjectManager()
 sandbox = mathlab.SandboxManager()
+animator = mathlab.AlgoAnimator()
 ```
+
+> `MainWindow` 需先创建 `QApplication`，且会初始化全部引擎、插件与 IPC 服务；仅做库调用时建议直接使用其余核心类。
 
 ### Python REPL 命名空间 API
 
@@ -740,11 +855,16 @@ MathLab 使用 UDP 协议进行进程间通信（Qt 主进程 ↔ Python 内核�
 ### 使用 PyInstaller 构建
 
 ```bash
-# 构建可执行文件
+# 方式一：使用根目录配置
+pyinstaller mathlab.spec
+
+# 方式二：使用包内配置
 pyinstaller mathlab/build_spec.spec
 
 # 输出位于 dist/ 目录
 ```
+
+> 打包前如需启用 C# 加速内核，请先执行 `dotnet build MathLab.CSharpEngine -c Release`；未构建时应用可正常运行，相关模块自动降级。
 
 ### 使用 Nuitka 构建
 
@@ -759,7 +879,8 @@ python -m nuitka --standalone --enable-plugin=pyside6 mathlab/main.py
 
 | 工作流             | 触发条件                             | 执行内容                       |
 | :-------------- | :------------------------------- | :------------------------- |
-| **test.yml**    | Push 到 main/develop，Pull Request | 代码检查、单元测试、覆盖率报告            |
+| **test.yml**    | Push 到 main/develop，Pull Request | 单元测试与覆盖率报告                  |
+| **code-quality.yml** | Push 到 main/develop，Pull Request | 8 项并行质量检查：Flake8、Pylint、MyPy、导入完整性、Bandit、Safety、Black + Isort 格式、汇总报告 |
 | **release.yml** | 创建 Tag（v\*）                      | 构建多平台发布包、创建 GitHub Release |
 
 ### 版本管理
@@ -786,6 +907,7 @@ python -m nuitka --standalone --enable-plugin=pyside6 mathlab/main.py
 | **3.5** | -     | 多智能体架构、思执分离大纲双轨制、纠错重试环                       |
 | **3.7** | -     | C# 加速内核、函数探索器、复数面板、信号实验、GPU 分形、Skill Library |
 | **3.8** | -     | 🌟 自适应学习引擎（Bloom/ZPD/UDL）、教学法引导引擎、结构化通信协议、Calculus Tools 与 Animation Studio 插件 |
+| **3.8.x** | 维护 | C# 数值内核（FastMath）可插拔接入与自动回退、约束求解/对象序列化性能优化、笔记本与 AI Worker 等 20 余处缺陷修复、CI 全项（Black/Isort/Flake8/MyPy/Pylint/Bandit）修复 |
 
 ### 未来规划
 
@@ -876,8 +998,12 @@ MathLab 受益于以下卓越的开源项目与框架：
 - **[SciPy](https://scipy.org/)** — 科学计算库
 - **[NetworkX](https://networkx.org/)** — 图论库
 - **[Jupyter](https://jupyter.org/)** — 交互式计算环境
+- **[MathNet.Numerics](https://numerics.mathdotnet.com/)** — C# 数值计算基础库
+- **[pythonnet](https://pythonnet.github.io/)** — Python ↔ .NET 互操作
 - **[Three.js](https://threejs.org/)** — 3D 渲染
 - **[ECharts](https://echarts.apache.org/)** — 数据可视化
+- **[Monaco Editor](https://microsoft.github.io/monaco-editor/)** — 代码编辑器
+- **[KaTeX](https://katex.org/)** — 数学公式渲染
 
 ### 引用本项目
 
