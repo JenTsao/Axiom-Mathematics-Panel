@@ -66,7 +66,8 @@ class NumEngine:
         if prefer_csharp is None:
             prefer_csharp = os.environ.get(CS_BACKEND_ENV, "").strip().lower() in ("1", "true", "yes", "on")
         self._prefer_csharp = bool(prefer_csharp)
-        self._cs_engine = None
+        # 惰性获取的 C# 引擎实例（动态 .NET 对象，声明为 Any）
+        self._cs_engine: Any = None
         self._cs_engine_probed = False
 
     def _get_cs_engine(self):

@@ -12,12 +12,14 @@
 import os
 import sys
 import threading
+from typing import Any
 
 import numpy as np
 
 # ── C# 引擎加载（pythonnet）─────────────────────────────────────────────────
-# import clr 必须包在 try 内：未安装 pythonnet 的环境下模块导入不应崩溃
-FastMath = None
+# import clr 必须包在 try 内：未安装 pythonnet 的环境下模块导入不应崩溃。
+# FastMath 是 pythonnet 动态加载的 .NET 类型，类型系统无法解析，故声明为 Any。
+FastMath: Any = None
 _LOAD_ERROR = ""
 
 try:
@@ -40,7 +42,9 @@ try:
     import clr
 
     clr.AddReference("MathLab.CSharpEngine")
-    from MathLab.CSharpEngine import FastMath
+    from MathLab.CSharpEngine import FastMath as _FastMathClass
+
+    FastMath = _FastMathClass
 except Exception as _load_exc:  # pragma: no cover - 取决于本机 .NET 环境
     _LOAD_ERROR = str(_load_exc)
 
@@ -51,7 +55,7 @@ class CsNumEngineError(Exception):
     pass
 
 
-def _to_cs_double_array(arr) -> "object":
+def _to_cs_double_array(arr) -> Any:
     """numpy 数组 → System.Double[]（一维平铺封送）。
 
     实测：写入方向 tolist() 封送（600×600 约 68ms）显著快于
@@ -79,15 +83,15 @@ def _from_cs_double_array(cs_arr) -> np.ndarray:
 def _from_cs_complex_array(cs_arr) -> np.ndarray:
     """System.Numerics.Complex[] → numpy complex128 数组。
 
-    .NET Complex 与 numpy complex128 均为 (Real, Imaginary) 双精度内存布局，
-    可直接按字节拷贝，避免逐元素访问 Real/Imaginary 的高昂开销。
+    注意：Complex 不是 CLR 基元类型，System.Buffer.BlockCopy 会抛
+    "Object must be an array of primitives"，因此只能逐元素转换
+    （实测 36 万元素约 60ms，仅影响已关闭的 C# 后端路径）。
     """
-    import System
-
-    nbytes = cs_arr.Length * 16
-    byte_arr = System.Array[System.Byte](nbytes)
-    System.Buffer.BlockCopy(cs_arr, 0, byte_arr, 0, nbytes)
-    return np.frombuffer(bytes(byte_arr), dtype=np.complex128)
+    out = np.empty(cs_arr.Length, dtype=np.complex128)
+    for i in range(cs_arr.Length):
+        v = cs_arr[i]
+        out[i] = complex(v.Real, v.Imaginary)
+    return out
 
 
 class CsNumEngine:
@@ -99,7 +103,8 @@ class CsNumEngine:
     def __init__(self):
         if FastMath is None:
             raise CsNumEngineError(f"C# Engine DLL is not loaded. {_LOAD_ERROR}".strip())
-        self._engine = FastMath()
+        # 动态加载的 .NET 对象，显式声明为 Any 以便类型检查器确定属性类型
+        self._engine: Any = FastMath()
         self.default_tolerance = 1e-8
 
     @property

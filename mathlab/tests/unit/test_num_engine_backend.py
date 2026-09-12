@@ -9,6 +9,7 @@ import numpy as np
 import pytest
 
 from mathlab.core import cs_num_engine
+from mathlab.core.cs_num_engine import CsNumEngineError
 from mathlab.core.num_engine import CS_BACKEND_ENV, NumEngine, NumEngineError
 
 
@@ -206,3 +207,56 @@ class TestFallback:
         engine.solve_linear_system([[3.0, 1.0], [1.0, 2.0]], [9.0, 8.0])
 
         assert probe_count["n"] == 1
+
+
+# ─────────────────────────────────────────────────────────────
+# 真实 C# 引擎（本地具备 pythonnet + DLL 时执行，CI 自动跳过）
+# 直接调用后端而非经过 NumEngine，避免回退机制掩盖后端自身故障
+# ─────────────────────────────────────────────────────────────
+
+_real_engine = cs_num_engine.get_cs_num_engine()
+
+requires_real_cs = pytest.mark.skipif(_real_engine is None, reason="C# 引擎不可用（缺少 pythonnet 或未编译 DLL）")
+
+
+@requires_real_cs
+class TestRealCSharpEngine:
+    @pytest.mark.unit
+    def test_eigenvalues_match_numpy(self):
+        matrix = np.array([[2.0, 1.0], [1.0, 2.0]])
+        result = _real_engine.eigenvalues(matrix)
+        assert pytest.approx(np.sort(np.real(result["eigenvalues"])), abs=1e-8) == np.linalg.eigvalsh(matrix)
+
+    @pytest.mark.unit
+    def test_complex_eigenvalues_extraction(self):
+        """旋转矩阵特征值为 ±i：验证 Complex[] 结果提取路径。"""
+        rotation = np.array([[0.0, -1.0], [1.0, 0.0]])
+        result = _real_engine.eigenvalues(rotation)
+        assert np.allclose(np.sort_complex(result["eigenvalues"]), np.array([-1j, 1j]))
+
+    @pytest.mark.unit
+    def test_eigenvector_pairs(self):
+        """特征对必须满足 A@v = λv（防止特征向量提取错位）。"""
+        matrix = np.array([[2.0, 1.0], [1.0, 2.0]])
+        result = _real_engine.eigenvalues(matrix)
+        for i in range(matrix.shape[0]):
+            lam = result["eigenvalues"][i]
+            vec = result["eigenvectors"][:, i]
+            assert np.allclose(matrix @ vec, lam * vec, atol=1e-8)
+
+    @pytest.mark.unit
+    def test_cholesky_matches_numpy(self):
+        matrix = np.array([[4.0, 2.0], [2.0, 3.0]])
+        assert np.allclose(_real_engine.cholesky(matrix)["L"], np.linalg.cholesky(matrix))
+
+    @pytest.mark.unit
+    def test_solve_matches_numpy(self):
+        A = np.array([[3.0, 1.0], [1.0, 2.0]])
+        b = np.array([9.0, 8.0])
+        assert np.allclose(_real_engine.solve_linear_system(A, b)["x"], np.linalg.solve(A, b))
+
+    @pytest.mark.unit
+    def test_singular_matrix_rejected(self):
+        """MathNet 对奇异矩阵返回 NaN/Inf，必须显式拒绝以对齐 NumPy 语义。"""
+        with pytest.raises(CsNumEngineError):
+            _real_engine.solve_linear_system(np.array([[1.0, 2.0], [2.0, 4.0]]), np.array([1.0, 2.0]))
