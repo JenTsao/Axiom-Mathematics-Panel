@@ -46,11 +46,7 @@ class OmniBarBackend(QObject):
 
             # 2. 同时转发到 AI 对话面板（原 on_submit 行为）
             parent_win = self._bar.parent()
-            if (
-                parent_win
-                and hasattr(parent_win, "ai_tools_panel")
-                and parent_win.ai_tools_panel
-            ):
+            if parent_win and hasattr(parent_win, "ai_tools_panel") and parent_win.ai_tools_panel:
                 parent_win.ai_tools_panel.chat_input.setText(text)
                 parent_win.ai_tools_panel.on_send_message()
 
@@ -79,11 +75,7 @@ class OmniBar(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         # ✨ 魔法标志：脱离主窗体、无边框、永远置顶、背景透明
-        self.setWindowFlags(
-            Qt.WindowType.Tool
-            | Qt.WindowType.FramelessWindowHint
-            | Qt.WindowType.WindowStaysOnTopHint
-        )
+        self.setWindowFlags(Qt.WindowType.Tool | Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
 
         self._build_ui()
@@ -105,9 +97,7 @@ class OmniBar(QWidget):
         self.channel.registerObject("backend", self.backend)
         self.web_view.page().setWebChannel(self.channel)
 
-        html_path = os.path.abspath(
-            os.path.join(os.path.dirname(__file__), "..", "resources", "omni_bar.html")
-        )
+        html_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "resources", "omni_bar.html"))
         self.web_view.setUrl(QUrl.fromLocalFile(html_path))
 
         # 页面加载完成后，若当前正处于召唤态则自动聚焦输入框
@@ -122,9 +112,7 @@ class OmniBar(QWidget):
             self._focus_input()
 
     def _focus_input(self):
-        self.web_view.page().runJavaScript(
-            "if (window.omni) window.omni.focusInput();"
-        )
+        self.web_view.page().runJavaScript("if (window.omni) window.omni.focusInput();")
 
     def _setup_animations(self):
         # 透明度渐变动画
@@ -171,9 +159,7 @@ class OmniBar(QWidget):
             return
         self.hide()
         # 清空前端输入框，避免下次召唤残留上次文本
-        self.web_view.page().runJavaScript(
-            "if (window.omni) window.omni.setValue('');"
-        )
+        self.web_view.page().runJavaScript("if (window.omni) window.omni.setValue('');")
 
     # --- 核心交互 UX ---
     def focusOutEvent(self, event):

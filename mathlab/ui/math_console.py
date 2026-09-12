@@ -281,9 +281,7 @@ class MathConsole(QDockWidget):
         # 超出阈值时降级为文本摘要，避免生成海量 DOM 节点拖死 QTextBrowser
         if len(arr) > self._MAX_RENDER_COLS:
             summary = html.escape(np.array2string(arr, precision=4, suppress_small=True, threshold=20))
-            return shape_hint + (
-                f"<pre style='color:{_COL_MATRIX};font-size:10px;margin:4px 0;'>{summary}</pre>"
-            )
+            return shape_hint + (f"<pre style='color:{_COL_MATRIX};font-size:10px;margin:4px 0;'>{summary}</pre>")
         td_style = self._td_style(_COL_MATRIX)  # 样式串只需计算一次
         cells = "".join(f"<td style='{td_style}'>{self._fmt(v)}</td>" for v in arr)
         return shape_hint + f"<table style='{self._tbl_style()}'><tr>{cells}</tr></table>"

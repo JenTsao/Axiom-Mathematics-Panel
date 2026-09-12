@@ -445,7 +445,9 @@ class AIMixin:
         self.recognize_worker.signals.finished.connect(
             lambda res, w=self.recognize_worker: self.on_ai_worker_finished(res, w)
         )
-        self.recognize_worker.signals.error.connect(lambda msg, w=self.recognize_worker: self.on_ai_worker_error(msg, w))
+        self.recognize_worker.signals.error.connect(
+            lambda msg, w=self.recognize_worker: self.on_ai_worker_error(msg, w)
+        )
         QThreadPool.globalInstance().start(self.recognize_worker)
 
     def on_ai_worker_error(self, error_msg: str, worker=None):
