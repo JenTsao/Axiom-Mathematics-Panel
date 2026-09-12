@@ -81,3 +81,5 @@ node_modules/
 mathlab/resources/web_src/node_modules/
 mathlab/resources/dist/
 *.bundle.js
+
+.workbuddy
