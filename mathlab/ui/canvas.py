@@ -1,3 +1,5 @@
+from functools import lru_cache
+
 from PySide6.QtCore import (
     QEasingCurve,
     QLineF,
@@ -51,23 +53,18 @@ except ImportError:
 
 # ── 网格画笔缓存 ─────────────────────────────────────────────────────────────
 # drawBackground 在滚动/缩放/拖动时高频触发，进程级复用画笔避免重复构造 QPen/QColor
-_GRID_PEN = None
-_ORIGIN_PEN = None
 
 
+@lru_cache(maxsize=1)
 def _get_grid_pen() -> QPen:
-    global _GRID_PEN
-    if _GRID_PEN is None:
-        _GRID_PEN = QPen(QColor("#d3e4fe"), 0.5)
-        _GRID_PEN.setStyle(Qt.DashLine)
-    return _GRID_PEN
+    pen = QPen(QColor("#d3e4fe"), 0.5)
+    pen.setStyle(Qt.DashLine)
+    return pen
 
 
+@lru_cache(maxsize=1)
 def _get_origin_pen() -> QPen:
-    global _ORIGIN_PEN
-    if _ORIGIN_PEN is None:
-        _ORIGIN_PEN = QPen(QColor("#737686"), 1)
-    return _ORIGIN_PEN
+    return QPen(QColor("#737686"), 1)
 
 
 class MathGraphicsItem(QGraphicsSvgItem):

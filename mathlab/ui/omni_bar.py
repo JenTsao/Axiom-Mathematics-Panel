@@ -5,9 +5,9 @@ from PySide6.QtCore import (
     QObject,
     QPropertyAnimation,
     QRect,
+    Qt,
     QTimer,
     QUrl,
-    Qt,
     Signal,
     Slot,
 )

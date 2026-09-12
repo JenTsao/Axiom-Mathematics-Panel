@@ -5,7 +5,20 @@ from functools import lru_cache
 
 import numpy as np
 from PySide6.QtCore import QObject, Signal
-from sympy import Abs, Eq, cos, exp, lambdify, log, parse_expr, pi, sin, sqrt, symbols, tan
+from sympy import (
+    Abs,
+    Eq,
+    cos,
+    exp,
+    lambdify,
+    log,
+    parse_expr,
+    pi,
+    sin,
+    sqrt,
+    symbols,
+    tan,
+)
 from sympy.parsing.sympy_parser import standard_transformations
 
 # 星号导入用于向后兼容（外部代码可能使用 `from geometry_engine import *`）
