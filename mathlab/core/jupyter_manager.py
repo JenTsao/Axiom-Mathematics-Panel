@@ -5,6 +5,7 @@ import subprocess
 import sys
 import threading
 import time
+from collections import deque
 from typing import Any, Dict, Optional
 
 try:
@@ -223,7 +224,7 @@ class JupyterManager:
     用法::
 
         mgr = JupyterManager()
-        mgr.start(timeout=30)
+        mgr.start(timeout=45)
         url = mgr.url
         ...
         mgr.stop()
@@ -247,6 +248,8 @@ class JupyterManager:
         self._token: str = "mathlab-embedded"
         self._url: str = ""
         self._lock = threading.Lock()
+        # 子进程输出的环形缓冲：供启动失败时诊断（防止管道阻塞见 _drain_process_output）
+        self._output_tail: deque = deque(maxlen=200)
 
     @property
     def url(self) -> str:
@@ -255,7 +258,7 @@ class JupyterManager:
             return self._url
         return f"http://127.0.0.1:{self.port}/lab?token={self._token}"
 
-    def start(self, timeout: int = 30) -> bool:
+    def start(self, timeout: int = 45) -> bool:
         """
         在后台启动 JupyterLab 服务器子进程。
 
@@ -313,6 +316,15 @@ class JupyterManager:
                 logger.error("启动 JupyterLab 失败: %s", e)
                 return False
 
+            # 启动输出排空线程：JupyterLab 启动日志量大，若 PIPE 无人读取，
+            # 管道缓冲区写满后子进程会被阻塞，表现为永远无法就绪直至超时
+            self._output_tail.clear()
+            threading.Thread(
+                target=self._drain_process_output,
+                name="JupyterLabOutputDrain",
+                daemon=True,
+            ).start()
+
             # 等待服务器就绪
             if self._wait_for_ready(timeout):
                 self._url = f"http://127.0.0.1:{self.port}/lab?token={self._token}"
@@ -320,8 +332,41 @@ class JupyterManager:
                 return True
             else:
                 logger.error("JupyterLab 服务器启动超时。")
+                self._log_output_tail()
                 self.stop()
                 return False
+
+    def _drain_process_output(self) -> None:
+        """持续读取 JupyterLab 子进程输出，防止管道缓冲区写满导致子进程阻塞。
+
+        JupyterLab 启动时会输出大量日志；若 stdout=PIPE 无人读取，Windows 管道
+        缓冲区（约 64KB）写满后子进程的 print 会阻塞，服务器永远无法就绪，
+        最终表现为"启动超时"。此守护线程持续排空管道，并把最近输出保留在
+        环形缓冲中供失败诊断。
+        """
+        process = self._process
+        if process is None or process.stdout is None:
+            return
+        try:
+            for raw_line in iter(process.stdout.readline, b""):
+                line = raw_line.decode("utf-8", errors="replace").rstrip()
+                if line:
+                    self._output_tail.append(line)
+                    logger.debug("JupyterLab: %s", line)
+        except Exception:
+            pass
+        finally:
+            try:
+                process.stdout.close()
+            except Exception:
+                pass
+
+    def _log_output_tail(self, max_lines: int = 30) -> None:
+        """将子进程最近输出写入日志，便于诊断启动失败原因。"""
+        if not self._output_tail:
+            return
+        lines = list(self._output_tail)[-max_lines:]
+        logger.error("JupyterLab 最近输出（最后 %d 行）:\n%s", len(lines), "\n".join(lines))
 
     def _wait_for_ready(self, timeout: int) -> bool:
         """轮询 HTTP 端口，等待 JupyterLab 服务器响应"""
@@ -341,20 +386,12 @@ class JupyterManager:
             logger.error("不允许的 URL 访问: %s", check_url)
             return False
 
+        last_progress_log = time.time()
         while time.time() < deadline:
             # 检查进程是否已退出
             if self._process is not None and self._process.poll() is not None:
                 logger.error("JupyterLab 进程意外退出，退出码: %s", self._process.poll())
-                # 读取错误输出
-                try:
-                    output = self._process.stdout.read(4096)
-                    if output:
-                        logger.error(
-                            "JupyterLab 输出: %s",
-                            output.decode("utf-8", errors="replace"),
-                        )
-                except Exception:
-                    pass
+                self._log_output_tail()
                 return False
 
             try:
@@ -366,6 +403,16 @@ class JupyterManager:
                 pass
             except Exception:
                 pass
+
+            # 周期性输出等待进度，避免长时间静默
+            now = time.time()
+            if now - last_progress_log >= 10:
+                logger.info(
+                    "仍在等待 JupyterLab 服务器就绪... (已等待 %d/%d 秒)",
+                    int(timeout - (deadline - now)),
+                    timeout,
+                )
+                last_progress_log = now
 
             time.sleep(0.5)
 

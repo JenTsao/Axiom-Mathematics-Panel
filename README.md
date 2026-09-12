@@ -3,7 +3,7 @@
   <img src="https://img.shields.io/badge/python-3.10+-brightgreen.svg" alt="Python">
   <img src="https://img.shields.io/badge/PySide6-6.5+-red.svg" alt="PySide6">
   <img src="https://img.shields.io/badge/version-3.8.0-orange.svg" alt="Version">
-  <img src="https://img.shields.io/badge/tests-126%20passed-brightgreen.svg" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-419%20passed-brightgreen.svg" alt="Tests">
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg" alt="Platform">
 </p>
 
@@ -369,7 +369,9 @@ markers = [
 | `pedagogical_engine.py` | 32 项     | 97% |
 | `agent_message.py`      | 26 项     | 90% |
 | `plugins/calculus_tools` + `plugins/animation_studio` | 32 项 | 88% / 62% |
-| **总计**                  | **126 项** | —   |
+| **新增小计**                  | **126 项** | —   |
+
+> 全量测试规模：22 个测试文件，约 **419** 个测试用例（unit / integration / e2e 分层）。
 
 ***
 

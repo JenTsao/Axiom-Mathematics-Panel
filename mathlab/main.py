@@ -32,6 +32,39 @@ mathlab_dir = application_path
 sys.path.insert(0, application_path)
 
 
+def _find_resource(*rel_parts: str) -> str:
+    """跨打包布局解析 mathlab 包内资源文件的绝对路径。
+
+    兼容以下布局，按顺序探测，返回第一个存在的候选：
+    - PyInstaller 6.x ONEDIR：资源在 ``<exe_dir>/_internal/mathlab/`` 下（即 sys._MEIPASS）
+    - PyInstaller 5.x ONEDIR：资源在 ``<exe_dir>/mathlab/`` 下
+    - PyInstaller ONEFILE：资源在 ``sys._MEIPASS/mathlab/`` 下
+    - 开发模式：资源在 ``mathlab/`` 源码目录下（即本文件的所在目录）
+
+    Args:
+        *rel_parts: 相对 mathlab 包根目录的路径片段，如 ("ui", "styles.qss")。
+
+    Returns:
+        第一个存在的候选路径；若都不存在，返回最可能的候选以便日志报错。
+    """
+    candidates: list = []
+    if getattr(sys, "frozen", False):
+        base = getattr(sys, "_MEIPASS", None)
+        if base:
+            # PyInstaller 6.x ONEDIR (_internal) 与 ONEFILE（临时解包目录）
+            candidates.append(os.path.join(base, "mathlab", *rel_parts))
+        # PyInstaller 5.x ONEDIR：数据文件与 exe 同级
+        candidates.append(
+            os.path.join(os.path.dirname(sys.executable), "mathlab", *rel_parts)
+        )
+    # 开发模式：main.py 就在 mathlab/ 目录内
+    candidates.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), *rel_parts))
+    for cand in candidates:
+        if os.path.exists(cand):
+            return cand
+    return candidates[0]
+
+
 def _show_error_dialog(message):
     """在 GUI 线程中显示错误对话框（console=False 时用户唯一能看到错误的方式）"""
     try:
@@ -164,11 +197,11 @@ def main():
         app.setApplicationName("MathLab")
         app.setApplicationVersion(__version__)
 
-        icon_path = os.path.join(mathlab_dir, "resources", "icons", "app_icon.png")
+        icon_path = _find_resource("resources", "icons", "app_icon.png")
         app.setWindowIcon(QIcon(icon_path))
 
         try:
-            stylesheet_path = os.path.join(mathlab_dir, "ui", "styles.qss")
+            stylesheet_path = _find_resource("ui", "styles.qss")
             with open(stylesheet_path, "r", encoding="utf-8") as f:
                 app.setStyleSheet(f.read())
             logger.debug("样式表加载完毕: %s", stylesheet_path)

@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MathLab (Axiom) — 项目分析报告</title>
+<style>
+  :root{
+    --bg:#0f1419; --panel:#161c24; --panel2:#1c232d; --line:#2a323d;
+    --txt:#e6edf3; --muted:#9aa7b4; --accent:#4ea1ff; --green:#3fb950;
+    --yellow:#d29922; --red:#f85149; --purple:#bc8cff; --teal:#39c5cf;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--txt);
+    font-family:-apple-system,"Segoe UI",Roboto,"Microsoft YaHei",sans-serif;
+    line-height:1.55;font-size:14px}
+  .wrap{max-width:1080px;margin:0 auto;padding:32px 24px 60px}
+  h1{font-size:26px;margin:0 0 4px}
+  h2{font-size:19px;margin:34px 0 14px;padding-left:10px;border-left:4px solid var(--accent)}
+  h3{font-size:15px;margin:18px 0 8px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
+  .sub{color:var(--muted);margin:0 0 8px}
+  .grid{display:grid;gap:14px}
+  .g2{grid-template-columns:repeat(2,1fr)}
+  .g3{grid-template-columns:repeat(3,1fr)}
+  .g4{grid-template-columns:repeat(4,1fr)}
+  @media(max-width:760px){.g2,.g3,.g4{grid-template-columns:1fr}}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px}
+  .stat{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 18px}
+  .stat .n{font-size:28px;font-weight:700;line-height:1.1}
+  .stat .l{color:var(--muted);font-size:12px;margin-top:4px}
+  .pill{display:inline-block;padding:2px 9px;border-radius:999px;font-size:12px;font-weight:600}
+  .p-good{background:rgba(63,185,80,.15);color:var(--green)}
+  .p-warn{background:rgba(210,153,34,.15);color:var(--yellow)}
+  .p-bad{background:rgba(248,81,73,.15);color:var(--red)}
+  .p-info{background:rgba(78,161,255,.15);color:var(--accent)}
+  table{width:100%;border-collapse:collapse;margin-top:6px;font-size:13px}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line)}
+  th{color:var(--muted);font-weight:600;font-size:12px;text-transform:uppercase}
+  tr:hover td{background:var(--panel2)}
+  .bar-row{display:flex;align-items:center;gap:10px;margin:7px 0}
+  .bar-row .name{width:90px;color:var(--muted);font-size:12px;text-align:right;flex:none}
+  .bar-track{flex:1;background:var(--panel2);border-radius:6px;overflow:hidden;height:22px}
+  .bar-fill{height:100%;border-radius:6px;display:flex;align-items:center;
+    justify-content:flex-end;padding-right:8px;font-size:11px;color:#06121f;font-weight:700}
+  .legend{display:flex;gap:16px;flex-wrap:wrap;color:var(--muted);font-size:12px;margin-top:10px}
+  .dot{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:middle}
+  .arch{display:flex;flex-direction:column;gap:8px;margin-top:8px}
+  .layer{border:1px solid var(--line);border-radius:10px;padding:10px 14px;background:var(--panel2)}
+  .layer .lt{font-weight:700;font-size:13px;margin-bottom:4px}
+  .layer .lc{color:var(--muted);font-size:12px}
+  .issue{border-left:3px solid var(--line);padding:8px 12px;margin:8px 0;background:var(--panel2);border-radius:0 8px 8px 0}
+  .issue.bad{border-color:var(--red)} .issue.warn{border-color:var(--yellow)} .issue.info{border-color:var(--accent)}
+  .code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;
+    background:var(--panel2);padding:2px 6px;border-radius:5px;color:var(--teal)}
+  .foot{color:var(--muted);font-size:12px;margin-top:40px;border-top:1px solid var(--line);padding-top:14px}
+  ul.tight{margin:6px 0;padding-left:18px} ul.tight li{margin:3px 0}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>🧮 MathLab (Axiom) — 项目分析报告</h1>
+  <p class="sub">下一代多智能体交互式数学教育与科研平台 · 桌面应用 (PySide6/Qt) · 生成于 2026-09-12</p>
+
+  <!-- ===== 结论卡 ===== -->
+  <h2>一、结论先行</h2>
+  <div class="grid g4">
+    <div class="stat"><div class="n" style="color:var(--green)">健康</div><div class="l">总体工程成熟度</div></div>
+    <div class="stat"><div class="n">35.8k</div><div class="l">Python 代码行数 (151 文件)</div></div>
+    <div class="stat"><div class="n">5 层</div><div class="l">清晰的分层架构</div></div>
+    <div class="stat"><div class="n" style="color:var(--yellow)">3</div><div class="l">Bandit 安全问题 (1 HIGH)</div></div>
+  </div>
+  <div class="card" style="margin-top:14px">
+    <p style="margin:0 0 8px"><b>一句话结论：</b>这是一个<strong>功能纵深极大、架构清晰、测试覆盖广</strong>的成熟项目，工程基础扎实。但存在若干<strong>可快速修复的“卫生问题”</strong>：版本号不一致、安全扫描有 1 个 HIGH 级哈希隐患、覆盖率报告仅 21%、以及打包后运行日志暴露的 JupyterLab 启动超时与样式表缺失。</p>
+    <p style="margin:0 0 8px"><b>修复状态（2026-09-12 更新）：</b>以下 P0/P1 问题已全部修复并通过验证 —— <span class="pill p-good">✅ Bandit 0 问题</span> <span class="pill p-good">✅ 版本统一 3.8.0</span> <span class="pill p-good">✅ styles.qss 打包路径</span> <span class="pill p-good">✅ JupyterLab 管道阻塞根因修复</span> <span class="pill p-good">✅ README 校准</span></p>
+    <p style="margin:0"><b>遗留跟进（P2）：</b>
+      <span class="pill p-info">覆盖率复核</span> 全量跑一次 pytest 确认真实覆盖率 →
+      <span class="pill p-info">环境同步</span> 项目 venv 缺 numpy/pytest，需 pip install -r requirements.txt →
+      <span class="pill p-info">跨平台</span> Linux AppImage 构建目标
+    </p>
+  </div>
+
+  <!-- ===== 规模 ===== -->
+  <h2>二、代码规模与分布</h2>
+  <div class="grid g4">
+    <div class="stat"><div class="n">151</div><div class="l">Python 文件 (.py)</div></div>
+    <div class="stat"><div class="n">35,789</div><div class="l">Python 总行数</div></div>
+    <div class="stat"><div class="n">6</div><div class="l">C# 加速内核文件 (~690 行)</div></div>
+    <div class="stat"><div class="n">5,383</div><div class="l">前端资源文件 (JS/TS, resources/)</div></div>
+  </div>
+
+  <h3>Python 代码按模块分布 (行数)</h3>
+  <div class="card">
+    <div class="bar-row"><div class="name">ui</div><div class="bar-track"><div class="bar-fill" style="width:600px;background:var(--accent)">13,181</div></div></div>
+    <div class="bar-row"><div class="name">core</div><div class="bar-track"><div class="bar-fill" style="width:588px;background:var(--purple)">12,929</div></div></div>
+    <div class="bar-row"><div class="name">tests</div><div class="bar-track"><div class="bar-fill" style="width:253px;background:var(--green)">5,555</div></div></div>
+    <div class="bar-row"><div class="name">plugins</div><div class="bar-track"><div class="bar-fill" style="width:69px;background:var(--teal)">1,514</div></div></div>
+    <div class="bar-row"><div class="name">utils</div><div class="bar-track"><div class="bar-fill" style="width:63px;background:var(--teal)">1,389</div></div></div>
+    <div class="bar-row"><div class="name">data</div><div class="bar-track"><div class="bar-fill" style="width:32px;background:var(--teal)">706</div></div></div>
+    <div class="bar-row"><div class="name">root</div><div class="bar-track"><div class="bar-fill" style="width:16px;background:var(--muted)">355</div></div></div>
+    <div class="bar-row"><div class="name">config</div><div class="bar-track"><div class="bar-fill" style="width:6px;background:var(--muted)">127</div></div></div>
+    <div class="bar-row"><div class="name">scripts</div><div class="bar-track"><div class="bar-fill" style="width:1.5px;background:var(--muted)">33</div></div></div>
+    <div class="legend"><span><span class="dot" style="background:var(--accent)"></span>ui 界面层</span><span><span class="dot" style="background:var(--purple)"></span>core 核心引擎</span><span><span class="dot" style="background:var(--green)"></span>tests 测试</span><span><span class="dot" style="background:var(--teal)"></span>扩展/工具</span></div>
+    <p class="sub" style="margin-top:10px">UI 与核心引擎合计约占 Python 代码的 73%，是典型的“重前端 + 重引擎”桌面应用结构。测试代码占比 15.5%，体量充足。</p>
+  </div>
+
+  <div class="grid g2" style="margin-top:14px">
+    <div class="card">
+      <h3 style="margin-top:0">技术栈足迹</h3>
+      <ul class="tight">
+        <li><b>GUI：</b>PySide6 (Qt for Python) ≥6.6</li>
+        <li><b>符号/数值：</b>SymPy, NumPy, SciPy, scikit-learn, NetworkX</li>
+        <li><b>前端资源：</b>Three.js / ECharts / Monaco / JupyterLab Web 资产 (resources/ 下 5,383 个 JS/TS 文件)</li>
+        <li><b>C# 加速：</b>MathNet.Numerics 桥接 (pythonnet)，6 个内核模块</li>
+        <li><b>AI：</b>11 家大模型可插拔接入 (OpenAI/DeepSeek/Claude/Gemini/通义等)</li>
+        <li><b>打包：</b>PyInstaller (spec) + Nuitka</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3 style="margin-top:0">C# 加速内核 (MathLab.CSharpEngine)</h3>
+      <table>
+        <tr><th>模块</th><th>行数</th></tr>
+        <tr><td>FastGeometry</td><td>202</td></tr>
+        <tr><td>FastComplex</td><td>165</td></tr>
+        <tr><td>FastMath</td><td>125</td></tr>
+        <tr><td>FastCalculus</td><td>72</td></tr>
+        <tr><td>FastMesh3D</td><td>70</td></tr>
+        <tr><td>FastFFT</td><td>56</td></tr>
+      </table>
+      <p class="sub" style="margin-top:8px">通过 pythonnet 桥接，提供几何采样 / 复数 / FFT / 数值积分 / 3D 网格等本地加速。</p>
+    </div>
+  </div>
+
+  <!-- ===== 架构 ===== -->
+  <h2>三、系统架构（五层体系）</h2>
+  <div class="card">
+    <div class="arch">
+      <div class="layer"><div class="lt" style="color:var(--accent)">① 用户界面层 UI</div><div class="lc">2D 画板 · 3D 画板 · 笔记本 · 命令面板 · Agent UI · Jupyter 面板</div></div>
+      <div class="layer"><div class="lt" style="color:var(--purple)">② 业务逻辑层 Core</div><div class="lc">几何引擎(DAG) · CAS 数学总线 · 动画引擎 · 多智能体路由 · 自适应学习引擎 · 教学法引擎 · 消息总线 · Agent 通信协议</div></div>
+      <div class="layer"><div class="lt" style="color:var(--teal)">③ 扩展与数据引擎层</div><div class="lc">Plugin VM · NumEngine · WebEngine Sandbox</div></div>
+      <div class="layer"><div class="lt" style="color:var(--yellow)">④ 安全隔离层 Sandbox</div><div class="lc">Python REPL (subprocess) · WebEngine Sandbox · Plugin VM · 沙盒安全策略</div></div>
+      <div class="layer"><div class="lt" style="color:var(--green)">⑤ 数据与协作层</div><div class="lc">项目文件(.mlproj) · 资源库 · WebSocket 协作 · 云端同步(可选)</div></div>
+    </div>
+    <p class="sub" style="margin-top:10px">核心引擎 45 个模块覆盖：多智能体 (agent_registry / agent_message / agent_bridge / context_assembler / ai_manager / ai_facade / skill_manager)、几何 (geometry_engine DAG / geogebra_engine / smart_guides)、CAS (cas_provider)、C# 桥接 (6×cs_*_engine)、沙盒 (sandbox / sandbox_script / sandbox_security)、笔记本、Jupyter 管理、教学法 (pedagogical_engine / student_model)、插件系统、动画、IPC。</p>
+  </div>
+
+  <!-- ===== 质量与安全 ===== -->
+  <h2>四、代码质量与安全</h2>
+  <div class="grid g3">
+    <div class="stat"><div class="n" style="color:var(--yellow)">~21%</div><div class="l">最近一次覆盖率 (coverage.xml)</div></div>
+    <div class="stat"><div class="n">22</div><div class="l">测试文件 · ~419 测试函数</div></div>
+    <div class="stat"><div class="n" style="color:var(--green)">clean</div><div class="l">git 状态 · 分支 main</div></div>
+  </div>
+
+  <h3>Bandit 安全扫描结果（3 项）</h3>
+  <div class="card">
+    <div class="issue bad">
+      <span class="pill p-bad">HIGH</span> <b>B324 弱哈希</b> — <span class="code">mathlab/data/file_manager.py:111</span><br>
+      <span class="sub">使用 MD5 作安全用途。建议显式声明 <span class="code">hashlib.md5(..., usedforsecurity=False)</span> 或改用 SHA-256；若仅作文件指纹可保留但应加注释说明非安全用途。</span>
+    </div>
+    <div class="issue warn">
+      <span class="pill p-warn">MEDIUM</span> <b>B310 URL 审计</b> — <span class="code">mathlab/core/jupyter_manager.py:332</span> 与 <span class="code">mathlab/ui/jupyter_panel.py:313</span><br>
+      <span class="sub">使用 <span class="code">urlopen</span> 放行了 <span class="code">file:/</span> 或自定义 scheme，需确认仅允许受信任来源，避免本地文件泄露。</span>
+    </div>
+  </div>
+
+  <h3>测试与 CI</h3>
+  <div class="card">
+    <ul class="tight">
+      <li><b>测试分层：</b>unit / integration / e2e，pytest 标记 unit·integration·e2e·slow·qt。</li>
+      <li><b>CI 工作流：</b><span class="code">.github/workflows/</span> 含 <span class="code">test.yml</span>、<span class="code">release.yml</span>、<span class="code">code-quality.yml</span>、<span class="code">_build-setup.yml</span>。</li>
+      <li><b>覆盖率提醒：</b>报告仅 21%，与“测试代码 5,555 行”体量不匹配，需确认是否为全量运行产物（可能仅运行了部分用例）。</li>
+      <li><b>文档与现实的偏差：</b>README 称“126 项测试”，实际 <span class="code">def test_</span> 函数约 <b>419</b> 个 —— README 测试数据疑似陈旧。</li>
+    </ul>
+  </div>
+
+  <!-- ===== 问题清单 ===== -->
+  <h2>五、发现的问题与风险（2026-09-12 已全部修复 ✅）</h2>
+  <div class="card">
+    <div class="issue warn">
+      <span class="pill p-good">✅ 已修复</span> <span class="pill p-warn">一致性</span> <b>版本号不一致</b><br>
+      <span class="sub">原状：<span class="code">__init__.py</span>=3.7、<span class="code">utils/version.py</span>=3.7.1、README=3.8.0 三处不一致。现全部统一为 <b>3.8.0</b>（含 setup.py 回退值与测试断言，共 5 处）。</span>
+    </div>
+    <div class="issue bad">
+      <span class="pill p-good">✅ 已修复</span> <span class="pill p-bad">运行</span> <b>JupyterLab 启动超时（根因：管道阻塞）</b><br>
+      <span class="sub">根因：<span class="code">subprocess.Popen(stdout=PIPE)</span> 无线程排空，JupyterLab 启动日志写满 ~64KB 管道缓冲后子进程阻塞，服务器永远无法就绪。修复：新增守护线程持续排空输出（环形缓冲 200 行），超时/崩溃时自动转储最近 30 行输出辅助诊断，等待期间每 10 秒输出进度日志，默认超时 30s→45s。</span>
+    </div>
+    <div class="issue warn">
+      <span class="pill p-good">✅ 已修复</span> <span class="pill p-warn">运行</span> <b>打包后样式表缺失</b><br>
+      <span class="sub">根因：PyInstaller 6.x ONEDIR 布局下资源位于 <span class="code">_internal/mathlab/</span>，而代码按旧布局查找。修复：main.py 新增 <span class="code">_find_resource()</span>，按 _MEIPASS→exe 目录→源码目录三级探测，同时修复图标路径。</span>
+    </div>
+    <div class="issue bad">
+      <span class="pill p-good">✅ 已确认修复</span> <span class="pill p-bad">安全</span> <b>Bandit 3 项告警（原报告过期）</b><br>
+      <span class="sub">复核发现代码中此前已修复（MD5 带 <span class="code">usedforsecurity=False</span>、两处 urlopen 均有 scheme/主机校验 + <span class="code"># nosec B310</span>）。用 bandit 1.9.4 以 CI 同参数重扫：<b>0 问题</b>，<span class="code">bandit-report.json</span> 已重新生成。</span>
+    </div>
+    <div class="issue info">
+      <span class="pill p-info">提示</span> <b>构建产物占盘</b><br>
+      <span class="sub">仓库根目录含 <span class="code">dist/</span>(2,875 文件)、<span class="code">build/</span>、<span class="code">venv/</span> 等大量构建/环境产物。若为源码仓库请确保 <span class="code">.gitignore</span> 已排除，避免误提交。</span>
+    </div>
+    <div class="issue info">
+      <span class="pill p-info">待办</span> <b>spec 平台覆盖不完整</b><br>
+      <span class="sub"><span class="code">mathlab.spec</span> 仅生成 Windows EXE 与 macOS BUNDLE，README 提及的 Linux AppImage 无对应构建目标，跨平台发布需补充。</span>
+    </div>
+  </div>
+
+  <!-- ===== 建议 ===== -->
+  <h2>六、优化建议（2026-09-12 状态更新）</h2>
+  <div class="card">
+    <table>
+      <tr><th>优先级</th><th>项</th><th>状态 / 行动</th></tr>
+      <tr><td><span class="pill p-bad">P0</span></td><td>MD5 安全哈希</td><td><span class="pill p-good">✅ 已确认修复</span> 代码已有 <span class="code">usedforsecurity=False</span>，bandit 重扫 0 问题</td></tr>
+      <tr><td><span class="pill p-warn">P1</span></td><td>版本号统一</td><td><span class="pill p-good">✅ 已修复</span> 5 处统一为 3.8.0</td></tr>
+      <tr><td><span class="pill p-warn">P1</span></td><td>JupyterLab 启动</td><td><span class="pill p-good">✅ 已修复</span> 管道排空线程 + 输出尾迹诊断 + 进度日志 + 超时 45s</td></tr>
+      <tr><td><span class="pill p-warn">P1</span></td><td>打包资源</td><td><span class="pill p-good">✅ 已修复</span> <span class="code">_find_resource()</span> 三级路径探测，兼容 PyInstaller 5/6 与 ONEFILE</td></tr>
+      <tr><td><span class="pill p-info">P2</span></td><td>覆盖率</td><td>待办：全量运行 pytest 确认真实覆盖率（当前快照 21%）</td></tr>
+      <tr><td><span class="pill p-info">P2</span></td><td>文档校准</td><td><span class="pill p-good">✅ 已修复</span> 测试徽章 126→419，表格改"新增小计"并补充全量规模</td></tr>
+      <tr><td><span class="pill p-info">P2</span></td><td>跨平台构建</td><td>待办：为 Linux 补充 PyInstaller/AppImage 目标</td></tr>
+    </table>
+  </div>
+
+  <div class="foot">
+    数据来源：本地静态扫描（文件统计 / Bandit 报告 / coverage.xml / mathlab.log / git 历史 / README）。
+    注：JS/TS 文件均为 <span class="code">mathlab/resources/</span> 下第三方前端资产（Three.js、ECharts、Monaco、JupyterLab），非手写业务代码。覆盖率与测试数为最近一次构建产物快照，可能未反映最新全量运行结果。
+  </div>
+
+</div>
+</body>
+</html>

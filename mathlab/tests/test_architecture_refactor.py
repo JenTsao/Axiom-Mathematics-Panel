@@ -284,13 +284,13 @@ class TestVersionConsistency:
         """version 模块应可导入且格式正确。"""
         from mathlab.utils.version import __version__
 
-        assert __version__ == "3.7.1"
+        assert __version__ == "3.8.0"
 
     def test_version_info_tuple(self):
         """__version_info__ 应为正确的元组。"""
         from mathlab.utils.version import __version_info__
 
-        assert __version_info__ == (3, 7, 1)
+        assert __version_info__ == (3, 8, 0)
 
     def test_version_string_format(self):
         """版本号应符合语义化版本格式。"""

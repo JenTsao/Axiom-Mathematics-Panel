@@ -3,7 +3,7 @@ import os
 from setuptools import find_packages, setup
 
 # 从统一版本管理模块读取版本号
-version = "3.7.1"
+version = "3.8.0"
 _version_file = os.path.join(os.path.dirname(__file__), "utils", "version.py")
 if os.path.exists(_version_file):
     with open(_version_file, "r", encoding="utf-8") as f:
