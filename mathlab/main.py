@@ -54,9 +54,7 @@ def _find_resource(*rel_parts: str) -> str:
             # PyInstaller 6.x ONEDIR (_internal) 与 ONEFILE（临时解包目录）
             candidates.append(os.path.join(base, "mathlab", *rel_parts))
         # PyInstaller 5.x ONEDIR：数据文件与 exe 同级
-        candidates.append(
-            os.path.join(os.path.dirname(sys.executable), "mathlab", *rel_parts)
-        )
+        candidates.append(os.path.join(os.path.dirname(sys.executable), "mathlab", *rel_parts))
     # 开发模式：main.py 就在 mathlab/ 目录内
     candidates.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), *rel_parts))
     for cand in candidates:
