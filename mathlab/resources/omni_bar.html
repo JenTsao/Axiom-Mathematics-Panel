@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <title>MathLab OmniBar</title>
+    <style>
+        /* 背景透明，配合 PySide6 的 WA_TranslucentBackground 浮层窗口 */
+        html, body {
+            margin: 0; padding: 0;
+            width: 100%; height: 100%;
+            overflow: hidden;
+            background: transparent;
+            font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;
+        }
+        /* 留出 20px 边距，让卡片的阴影有呼吸空间（原 Qt 用 margins 实现） */
+        #omni-wrap {
+            width: 100%; height: 100%;
+            box-sizing: border-box;
+            display: flex; align-items: center; justify-content: center;
+            padding: 20px;
+            background: transparent;
+        }
+        #omni-panel {
+            width: 100%;
+            box-sizing: border-box;
+            display: flex; align-items: center; gap: 12px;
+            padding: 10px 18px;
+            background: rgba(255, 255, 255, 0.95);
+            border: 1px solid rgba(0, 0, 0, 0.1);
+            border-radius: 12px;
+            /* 用 CSS 阴影替代原 QGraphicsDropShadowEffect */
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+        }
+        #omni-agent { font-size: 20px; line-height: 1; }
+        #omni-input {
+            flex: 1;
+            border: none; outline: none; background: transparent;
+            font-size: 14px; color: #333; font-family: inherit;
+        }
+        #omni-input::placeholder { color: #999; }
+        #omni-status { font-size: 14px; color: #888; line-height: 1; }
+    </style>
+
+    <!-- Qt 提供的 WebChannel 桥接脚本 -->
+    <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+    <!-- 由 webpack.omni.config.js 打包生成 -->
+    <script src="./dist/omni_bar.bundle.js"></script>
+</head>
+<body>
+    <div id="omni-wrap">
+        <div id="omni-panel">
+            <span id="omni-agent">🟢</span>
+            <input id="omni-input" type="text" autocomplete="off"
+                   placeholder="唤醒 AI，或输入 / 执行命令 (如 /clear)..." />
+            <span id="omni-status">💤</span>
+        </div>
+    </div>
+</body>
+</html>

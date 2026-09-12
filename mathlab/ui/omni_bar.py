@@ -1,89 +1,132 @@
-from PySide6.QtCore import QEasingCurve, QPoint, QPropertyAnimation, QRect, Qt, Signal
-from PySide6.QtGui import QColor, QFont, QKeyEvent
-from PySide6.QtWidgets import (
-    QApplication,
-    QFrame,
-    QGraphicsDropShadowEffect,
-    QHBoxLayout,
-    QLabel,
-    QLineEdit,
-    QVBoxLayout,
-    QWidget,
+import os
+
+from PySide6.QtCore import (
+    QEasingCurve,
+    QObject,
+    QPropertyAnimation,
+    QRect,
+    QTimer,
+    QUrl,
+    Qt,
+    Signal,
+    Slot,
 )
+from PySide6.QtGui import QColor, QKeyEvent
+from PySide6.QtWebChannel import QWebChannel
+from PySide6.QtWebEngineWidgets import QWebEngineView
+from PySide6.QtWidgets import QVBoxLayout, QWidget
+
+
+class OmniBarBackend(QObject):
+    """暴露给前端 JS 的桥接对象 (QWebChannel)。
+
+    JS 侧通过 ``window.backend.submit(text)`` / ``window.backend.request_dismiss()``
+    调用这里的 Slot；这里再驱动 Python 侧原本的 OmniBar 行为。
+    """
+
+    def __init__(self, omni_bar: "OmniBar"):
+        super().__init__()
+        self._bar = omni_bar
+        self._submitting = False
+
+    @Slot(str)
+    def submit(self, text: str) -> None:
+        """复刻原 OmniBar.on_submit 的全部行为，保证功能一致性。"""
+        # 去抖动：防止快速连按回车导致重复发送
+        if self._submitting:
+            return
+        self._submitting = True
+        try:
+            text = (text or "").strip()
+            if not text:
+                return
+
+            # 1. 触发全局 AI 任务
+            self._bar.search_submitted.emit(text)
+
+            # 2. 同时转发到 AI 对话面板（原 on_submit 行为）
+            parent_win = self._bar.parent()
+            if (
+                parent_win
+                and hasattr(parent_win, "ai_tools_panel")
+                and parent_win.ai_tools_panel
+            ):
+                parent_win.ai_tools_panel.chat_input.setText(text)
+                parent_win.ai_tools_panel.on_send_message()
+
+            # 3. 发送完后自动功成身退
+            self._bar.dismiss()
+        finally:
+            self._submitting = False
+
+    @Slot()
+    def request_dismiss(self) -> None:
+        """JS 侧按下 Esc 时请求关闭。"""
+        self._bar.dismiss()
 
 
 class OmniBar(QWidget):
+    """混合式重构后的命令栏：
+
+    浮层窗口（无边框 / 置顶 / 半透明）的行为保留在 Python 侧，
+    内部嵌入一个 QWebEngineView 渲染 JS/TS 前端 (omni_bar.html)，
+    二者经 QWebChannel 双向通信。对外接口与旧版完全一致，
+    main_window 与 _mixin_ai 无需改动。
+    """
+
     search_submitted = Signal(str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
         # ✨ 魔法标志：脱离主窗体、无边框、永远置顶、背景透明
-        self.setWindowFlags(Qt.WindowType.Tool | Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint)
+        self.setWindowFlags(
+            Qt.WindowType.Tool
+            | Qt.WindowType.FramelessWindowHint
+            | Qt.WindowType.WindowStaysOnTopHint
+        )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
 
-        self.setup_ui()
-        self.setup_animations()
+        self._build_ui()
+        self._setup_animations()
 
-    def setup_ui(self):
+    def _build_ui(self):
         main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(20, 20, 20, 20)  # 为阴影留出空间
+        main_layout.setContentsMargins(0, 0, 0, 0)
 
-        # 核心载体：带圆角和毛玻璃质感的 Frame
-        self.panel = QFrame(self)
-        self.panel.setStyleSheet("""
-            QFrame {
-                background-color: rgba(255, 255, 255, 0.95);
-                border: 1px solid rgba(0, 0, 0, 0.1);
-                border-radius: 12px;
-            }
-        """)
+        # 核心载体：WebEngine 视图，渲染 JS/TS 前端
+        self.web_view = QWebEngineView(self)
+        self.web_view.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.web_view.page().setBackgroundColor(QColor(0, 0, 0, 0))
+        main_layout.addWidget(self.web_view)
 
-        # 增加高级的 Mac 风格物理阴影
-        shadow = QGraphicsDropShadowEffect(self)
-        shadow.setBlurRadius(30)
-        shadow.setXOffset(0)
-        shadow.setYOffset(10)
-        shadow.setColor(QColor(0, 0, 0, 40))
-        self.panel.setGraphicsEffect(shadow)
+        # QWebChannel 桥接
+        self.channel = QWebChannel()
+        self.backend = OmniBarBackend(self)
+        self.channel.registerObject("backend", self.backend)
+        self.web_view.page().setWebChannel(self.channel)
 
-        # 面板内部布局
-        panel_layout = QHBoxLayout(self.panel)
-        panel_layout.setContentsMargins(15, 10, 15, 10)
+        html_path = os.path.abspath(
+            os.path.join(os.path.dirname(__file__), "..", "resources", "omni_bar.html")
+        )
+        self.web_view.setUrl(QUrl.fromLocalFile(html_path))
 
-        # 1. 当前 Agent 身份指示器
-        self.agent_icon = QLabel("🟢")
-        self.agent_icon.setStyleSheet("font-size: 20px; background: transparent; border: none;")
-
-        # 2. 无边框的主输入框
-        self.input_field = QLineEdit()
-        self.input_field.setPlaceholderText("唤醒 AI，或输入 / 执行命令 (如 /clear)...")
-        font = QFont("PingFang SC", 14)  # 稍微大一点的字体，提升输入沉浸感
-        self.input_field.setFont(font)
-        self.input_field.setStyleSheet("""
-            QLineEdit {
-                border: none;
-                background: transparent;
-                color: #333;
-            }
-        """)
-        # 回车发送信号
-        self.input_field.returnPressed.connect(self.on_submit)
-
-        # 3. 极其克制的状态微标 (Token / 状态)
-        self.status_label = QLabel("💤")
-        self.status_label.setStyleSheet("font-size: 14px; background: transparent; border: none; color: #888;")
-
-        panel_layout.addWidget(self.agent_icon)
-        panel_layout.addWidget(self.input_field)
-        panel_layout.addWidget(self.status_label)
-
-        main_layout.addWidget(self.panel)
+        # 页面加载完成后，若当前正处于召唤态则自动聚焦输入框
+        self.web_view.loadFinished.connect(self._on_load_finished)
 
         # 默认隐藏
         self.setWindowOpacity(0.0)
         self.hide()
 
-    def setup_animations(self):
+    def _on_load_finished(self, ok: bool):
+        if ok and self.isVisible():
+            self._focus_input()
+
+    def _focus_input(self):
+        self.web_view.page().runJavaScript(
+            "if (window.omni) window.omni.focusInput();"
+        )
+
+    def _setup_animations(self):
         # 透明度渐变动画
         self.fade_anim = QPropertyAnimation(self, b"windowOpacity")
         self.fade_anim.setDuration(150)  # 150ms 极速响应
@@ -91,7 +134,6 @@ class OmniBar(QWidget):
 
     def summon(self, parent_rect: QRect):
         """召唤命令盘：居中浮现"""
-        # 计算完美居中的位置 (相对于父窗口，通常在靠上的黄金分割点)
         width = 600
         height = 80
         x = parent_rect.x() + (parent_rect.width() - width) // 2
@@ -107,7 +149,8 @@ class OmniBar(QWidget):
 
         # 强制抢占焦点，光标直接进入输入框
         self.activateWindow()
-        self.input_field.setFocus()
+        # 页面就绪后聚焦输入框（首次可能尚未加载完，延时兜底 + loadFinished 双重保险）
+        QTimer.singleShot(30, self._focus_input)
 
     def dismiss(self):
         """驱散命令盘：优雅淡出"""
@@ -125,7 +168,10 @@ class OmniBar(QWidget):
         except RuntimeError:
             pass
         self.hide()
-        self.input_field.clear()
+        # 清空前端输入框，避免下次召唤残留上次文本
+        self.web_view.page().runJavaScript(
+            "if (window.omni) window.omni.setValue('');"
+        )
 
     # --- 核心交互 UX ---
     def focusOutEvent(self, event):
@@ -134,31 +180,7 @@ class OmniBar(QWidget):
         super().focusOutEvent(event)
 
     def keyPressEvent(self, event: QKeyEvent):
-        """按下 Esc 键立即消失"""
+        """按下 Esc 键立即消失（Web 视图未抢焦点时的兜底）"""
         if event.key() == Qt.Key.Key_Escape:
             self.dismiss()
         super().keyPressEvent(event)
-
-    def on_submit(self):
-        # [BUG修复] 去抖动：防止快速连按回车导致重复发送
-        if getattr(self, "_is_submitting", False):
-            return
-        self._is_submitting = True
-
-        try:
-            text = self.input_field.text().strip()
-            if not text:
-                return
-
-            self.search_submitted.emit(text)
-
-            # [BUG修复] 安全的属性访问，防御父窗体已被销毁或属性不存在的情况
-            parent_win = self.parent()
-            if parent_win and hasattr(parent_win, "ai_tools_panel") and parent_win.ai_tools_panel:
-                parent_win.ai_tools_panel.chat_input.setText(text)
-                parent_win.ai_tools_panel.on_send_message()
-
-            # 发送完后自动功成身退
-            self.dismiss()
-        finally:
-            self._is_submitting = False
