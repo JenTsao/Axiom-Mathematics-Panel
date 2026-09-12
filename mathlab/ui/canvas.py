@@ -49,6 +49,26 @@ except ImportError:
     SharedSvgRendererCache = None
     is_latex_rendering_available = lambda: False
 
+# ── 网格画笔缓存 ─────────────────────────────────────────────────────────────
+# drawBackground 在滚动/缩放/拖动时高频触发，进程级复用画笔避免重复构造 QPen/QColor
+_GRID_PEN = None
+_ORIGIN_PEN = None
+
+
+def _get_grid_pen() -> QPen:
+    global _GRID_PEN
+    if _GRID_PEN is None:
+        _GRID_PEN = QPen(QColor("#d3e4fe"), 0.5)
+        _GRID_PEN.setStyle(Qt.DashLine)
+    return _GRID_PEN
+
+
+def _get_origin_pen() -> QPen:
+    global _ORIGIN_PEN
+    if _ORIGIN_PEN is None:
+        _ORIGIN_PEN = QPen(QColor("#737686"), 1)
+    return _ORIGIN_PEN
+
 
 class MathGraphicsItem(QGraphicsSvgItem):
     """
@@ -347,8 +367,7 @@ class GeometryCanvas(QGraphicsView):
         """重写背景绘制：使用单次 Painter 调用绘制网格，替代 404 个 QGraphicsLineItem"""
         super().drawBackground(painter, rect)
 
-        grid_pen = QPen(QColor("#d3e4fe"), 0.5)
-        grid_pen.setStyle(Qt.DashLine)
+        grid_pen = _get_grid_pen()
         painter.setPen(grid_pen)
 
         # 计算可见区域范围内的网格线（避免绘制不可见区域）
@@ -373,8 +392,7 @@ class GeometryCanvas(QGraphicsView):
         painter.drawPath(path_h)
 
         # 坐标轴
-        origin_pen = QPen(QColor("#737686"), 1)
-        painter.setPen(origin_pen)
+        painter.setPen(_get_origin_pen())
         painter.drawLine(QLineF(0, top, 0, bottom))
         painter.drawLine(QLineF(left, 0, right, 0))
 
@@ -1276,22 +1294,17 @@ class GeometryCanvas(QGraphicsView):
             x_vals = np.linspace(a, b, 200)
 
             path = QPainterPath()
+            # 起点取 (a, 0)，配合末尾 (b, 0) 形成闭合的面积区域左/右边界
             path.moveTo(a, 0)
 
-            first_valid = True
             for x in x_vals:
                 try:
                     y = float(fast_func(x))
                     if not np.isfinite(y):
                         y = 0
-                except:
+                except Exception:
                     y = 0
-
-                if first_valid:
-                    path.lineTo(x, y)
-                    first_valid = False
-                else:
-                    path.lineTo(x, y)
+                path.lineTo(x, y)
 
             path.lineTo(b, 0)
             path.closeSubpath()

@@ -13,6 +13,10 @@ try:
 except ImportError:
     get_jupyter_sandbox = None
 
+# 预编译代码围栏正则：AI 流式输出过程中每个 chunk 都会调用一次过滤
+_CODE_FENCE_PY_RE = re.compile(r"```python\n?")
+_CODE_FENCE_RE = re.compile(r"```\n?")
+
 
 class EditorBackend(QObject):
     execution_finished = Signal(dict)
@@ -292,9 +296,8 @@ class AutocompleteTextEdit(QWidget):
         self._ai_buffer += chunk
 
         # 实时过滤掉 AI 输出的 ```python 和 ``` 标记，实现纯净代码流输入
-        display_text = self._ai_buffer
-        display_text = re.sub(r"```python\n?", "", display_text)
-        display_text = re.sub(r"```\n?", "", display_text)
+        display_text = _CODE_FENCE_PY_RE.sub("", self._ai_buffer)
+        display_text = _CODE_FENCE_RE.sub("", display_text)
 
         # 每次清空并全量替换能避免因为正则截断导致的流式乱码问题
         escaped_code = json.dumps(display_text)

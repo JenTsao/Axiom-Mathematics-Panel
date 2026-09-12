@@ -172,7 +172,17 @@ class NotebookPanel(QWidget):
         self.ui_cells = {}
         self.current_executing_cell_id = None
 
+        # 监听内核发出的滑块请求（只连接一次，避免语言切换时重复连接）
+        self.backend.kernel.signals.slider_requested.connect(self.handle_slider_requested)
+
+        # 构建 UI 并创建首个单元格。
+        # 此前 UI 构建依赖 retranslate_ui() 触发，导致：
+        # 1) 面板在首次语言切换前一直是空白；2) 首次调用时访问尚未创建的控件直接报错。
+        self.init_ui()
+        self.add_new_cell(CellType.CODE)
+
     def retranslate_ui(self):
+        """仅更新界面文案，不重建 UI、不新增单元格。"""
         self.btn_save.setText(f"💾 {t('notebook.save') or 'Save'}")
         self.btn_load.setText(f"📂 {t('notebook.open') or 'Open'}")
         self.btn_add_code.setText(t("notebook.add_code"))
@@ -182,12 +192,6 @@ class NotebookPanel(QWidget):
         for ui_cell in self.ui_cells.values():
             if hasattr(ui_cell, "retranslate_ui"):
                 ui_cell.retranslate_ui()
-
-        # 监听内核发出的滑块请求
-        self.backend.kernel.signals.slider_requested.connect(self.handle_slider_requested)
-
-        self.init_ui()
-        self.add_new_cell(CellType.CODE)
 
     def init_ui(self):
         self.main_layout = QVBoxLayout(self)

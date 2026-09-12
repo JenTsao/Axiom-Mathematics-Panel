@@ -35,8 +35,11 @@ class ThreeJSViewerPlugin(MathLabPlugin):
         self.dock = api.add_sidebar_panel(t("plugins.3d_viewer"), self.web_view)
 
         # 核心：监听底层几何引擎的拓扑变化！
+        # 先移除旧的同名监听再注册，保证重复激活时不会累积回调
         if hasattr(self.api, "geometry_engine"):
-            self.api.geometry_engine.add_listener(self.on_geometry_event)
+            engine = self.api.geometry_engine
+            engine.remove_listener(self.on_geometry_event)
+            engine.add_listener(self.on_geometry_event)
 
         # =================================================================
         # 高性能 3D 动态波纹驱动 (C# + WebGL)
@@ -94,5 +97,27 @@ class ThreeJSViewerPlugin(MathLabPlugin):
         self.web_view.page().runJavaScript(js_code)
 
     def on_deactivate(self):
-        if hasattr(self, "dock"):
+        # 停止 60FPS 渲染定时器，避免插件卸载后仍持续消耗 CPU 与 WebEngine 渲染资源
+        if getattr(self, "render_timer", None) is not None:
+            self.render_timer.stop()
+            self.render_timer = None
+
+        # 移除几何引擎事件监听，避免悬垂回调与内存泄漏
+        if hasattr(self, "api") and hasattr(self.api, "geometry_engine"):
+            try:
+                self.api.geometry_engine.remove_listener(self.on_geometry_event)
+            except Exception:
+                pass
+
+        # 释放 WebEngine 视图资源
+        if getattr(self, "web_view", None) is not None:
+            try:
+                self.web_view.setParent(None)
+                self.web_view.deleteLater()
+            except Exception:
+                pass
+            self.web_view = None
+
+        if getattr(self, "dock", None) is not None:
             self.dock.close()
+            self.dock = None

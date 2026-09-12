@@ -207,22 +207,9 @@ class MainWindow(
             }
         )
 
-        # ── 注册几何引擎事件监听 ─────────────────────────────────────────
-        def on_geometry_event(event_type, data):
-            if not hasattr(self, "algebra_panel") or not hasattr(self, "central_widget"):
-                return
-            if event_type == "object_added":
-                self.algebra_panel.add_object(data)
-                self.central_widget.draw_object(data["id"], data)
-            elif event_type == "object_updated":
-                self.algebra_panel.update_object(data)
-                self.central_widget.update_object(data["id"], data)
-            elif event_type == "object_removed":
-                obj_id = data["id"] if isinstance(data, dict) else data
-                self.algebra_panel.remove_object(obj_id)
-                self.central_widget.remove_object(obj_id)
-
-        self.geometry_engine.add_listener(on_geometry_event)
+        # ── 几何引擎事件监听 ─────────────────────────────────────────────
+        # 注：事件监听已在 connect_signals() 中通过 self.on_geometry_event 注册，
+        # 此处不再重复注册等价监听器，否则每次事件都会触发两遍 UI 更新。
 
         # ── 算法动画回调 ─────────────────────────────────────────────────
         def on_algorithm_step(state):
@@ -258,13 +245,15 @@ class MainWindow(
                 self.plugin_manager.unload_all()
             except Exception as e:
                 print(f"Error unloading plugins on close: {e}")
-        # 清理所有活动的异步线程
-        for worker in list(self.active_workers):
-            try:
-                worker.quit()
-                worker.wait(1000)
-            except Exception:
-                pass
+        # 清理所有活动的异步任务
+        # 注：AI Worker 均为 QRunnable（无 quit()/wait()），统一交由全局线程池等待结束
+        from PySide6.QtCore import QThreadPool
+
+        try:
+            QThreadPool.globalInstance().waitForDone(2000)
+        except Exception:
+            pass
+        self.active_workers.clear()
 
         if hasattr(self, "ipc_server") and self.ipc_server is not None:
             self.ipc_server.stop()

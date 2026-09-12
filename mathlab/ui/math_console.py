@@ -56,6 +56,10 @@ class MathConsole(QDockWidget):
     - 工作区变量通过 ``bridge.workspace()`` 持久存储
     """
 
+    # 矩阵/向量渲染上限：超过阈值退化为文本摘要，防止大批量 DOM 节点卡死界面
+    _MAX_RENDER_ROWS = 30
+    _MAX_RENDER_COLS = 30
+
     def __init__(self, parent=None):
         from mathlab.utils.i18n_manager import get_i18n
 
@@ -273,11 +277,29 @@ class MathConsole(QDockWidget):
         )
 
     def _render_1d(self, arr: np.ndarray) -> str:
-        cells = "".join(f"<td style='{self._td_style(_COL_MATRIX)}'>{self._fmt(v)}</td>" for v in arr)
         shape_hint = f"<span style='color:{_COL_MUTED};font-size:10px;'>1×{len(arr)}</span>&nbsp;"
+        # 超出阈值时降级为文本摘要，避免生成海量 DOM 节点拖死 QTextBrowser
+        if len(arr) > self._MAX_RENDER_COLS:
+            summary = html.escape(np.array2string(arr, precision=4, suppress_small=True, threshold=20))
+            return shape_hint + (
+                f"<pre style='color:{_COL_MATRIX};font-size:10px;margin:4px 0;'>{summary}</pre>"
+            )
+        td_style = self._td_style(_COL_MATRIX)  # 样式串只需计算一次
+        cells = "".join(f"<td style='{td_style}'>{self._fmt(v)}</td>" for v in arr)
         return shape_hint + f"<table style='{self._tbl_style()}'><tr>{cells}</tr></table>"
 
     def _render_2d(self, arr: np.ndarray) -> str:
+        rows, cols = arr.shape[0], arr.shape[1]
+
+        if rows > self._MAX_RENDER_ROWS or cols > self._MAX_RENDER_COLS:
+            summary = html.escape(np.array2string(arr, precision=4, suppress_small=True, threshold=20))
+            shape_hint = (
+                f"<span style='color:{_COL_MUTED};font-size:10px;'>"
+                f"{rows}×{cols} matrix（数据量较大，仅显示摘要）</span><br>"
+            )
+            return shape_hint + f"<pre style='color:{_COL_MATRIX};font-size:10px;margin:4px 0;'>{summary}</pre>"
+
+        td_style = self._td_style(_COL_MATRIX)  # 样式串只需计算一次
         rows_html = []
         for i, row in enumerate(arr):
             # 行号
@@ -286,7 +308,7 @@ class MathConsole(QDockWidget):
                 f"padding:2px 6px;text-align:right;border-right:1px solid {_COL_BORDER};'>"
                 f"{i + 1}</td>"
             )
-            cells = "".join(f"<td style='{self._td_style(_COL_MATRIX)}'>{self._fmt(v)}</td>" for v in row)
+            cells = "".join(f"<td style='{td_style}'>{self._fmt(v)}</td>" for v in row)
             rows_html.append(f"<tr>{row_lbl}{cells}</tr>")
 
         shape_hint = (

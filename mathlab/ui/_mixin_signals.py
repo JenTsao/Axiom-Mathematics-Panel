@@ -376,22 +376,35 @@ class SignalsMixin:
             self._objects_data.clear()
             if hasattr(self, "geometry_engine"):
                 self.geometry_engine.clear()
-            result = {
-                "success": True,
-                "output": t("errors.canvas_cleared") + "\n",
-                "error": "",
-                "more": False,
-            }
+            self.console.display_result(
+                {
+                    "success": True,
+                    "output": t("errors.canvas_cleared") + "\n",
+                    "error": "",
+                    "more": False,
+                }
+            )
         elif hasattr(self, "python_repl"):
-            result = self.python_repl.execute(command)
+            # 沙箱执行会阻塞调用线程（最长 timeout+2 秒），必须移交线程池，
+            # 否则执行期间整个 GUI 冻结。
+            # 使用 group_id 保证沙箱命令串行：同组新请求覆盖排队请求，
+            # 避免并发读写沙箱 stdin/stdout 造成结果错乱。
+            TaskManager().submit(
+                fn=self.python_repl.execute,
+                on_success=self.console.display_result,
+                on_error=lambda err: self.console.display_system_message(f"执行异常: {err}", level="error"),
+                group_id="console_exec",
+                code=command,
+            )
         else:
-            result = {
-                "success": False,
-                "output": "",
-                "error": t("errors.python_repl_not_initialized"),
-                "more": False,
-            }
-        self.console.display_result(result)
+            self.console.display_result(
+                {
+                    "success": False,
+                    "output": "",
+                    "error": t("errors.python_repl_not_initialized"),
+                    "more": False,
+                }
+            )
 
     def on_command_entered(self, command: str) -> None:
         try:

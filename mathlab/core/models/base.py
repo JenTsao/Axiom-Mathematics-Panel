@@ -40,13 +40,16 @@ class GeometricObject:
         return self.name
 
     def serialize(self):
+        # 直接读取 _symbolic_expr，避免访问 Point 的懒加载 property 而触发
+        # 不必要的 SymPy symbols 构造（序列化本身并不需要符号对象）
+        symbolic = getattr(self, "_symbolic_expr", None)
         return {
             "id": self.id,
             "name": self.name,
             "type": self.type,
             "coordinates": self.coordinates,
-            "symbolic_expr": str(self.symbolic_expr) if self.symbolic_expr else None,
-            "constraints": [str(c) for c in self.constraints],
+            "symbolic_expr": str(symbolic) if symbolic else None,
+            "constraints": [c if isinstance(c, str) else str(c) for c in self.constraints],
             "depends_on": self.depends_on,
             "is_draft": getattr(self, "is_draft", False),
         }

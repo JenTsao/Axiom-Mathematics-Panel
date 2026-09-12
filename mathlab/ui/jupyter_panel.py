@@ -25,6 +25,8 @@ from PySide6.QtCore import (
     Qt,
     QTimer,
     QUrl,
+    Signal,
+    Slot,
 )
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
@@ -157,10 +159,18 @@ class JupyterPanel(QWidget):
         panel.load_workspace()
     """
 
+    # 后台诊断线程 → 主线程 UI 的信号（跨线程 emit 自动排队到接收者线程）
+    _diagnosis_ready = Signal(str)
+
     def __init__(self, jupyter_url: str, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.jupyter_url = jupyter_url
+        self._diagnosis_ready.connect(self._show_diagnosis)
         self._setup_ui()
+
+    def _show_diagnosis(self, msg: str) -> None:
+        """在主线程展示诊断结果（诊断本身在后台线程执行）。"""
+        self._card.show_error(msg)
 
     # ── UI 构建 ──────────────────────────────────────────────────────────────
 
@@ -210,8 +220,14 @@ class JupyterPanel(QWidget):
 
     # ── 公开 API ─────────────────────────────────────────────────────────────
 
+    @Slot()
     def load_workspace(self) -> None:
-        """开始加载 JupyterLab 工作区页面"""
+        """开始加载 JupyterLab 工作区页面。
+
+        标记为 Qt 槽：主窗口在后台启动线程中通过
+        QMetaObject.invokeMethod(..., QueuedConnection) 调用本方法，
+        普通 Python 方法无法被元对象系统识别，会导致加载永不执行。
+        """
         if not _WEBENGINE_AVAILABLE:
             return
         self._browser.load(QUrl(self.jupyter_url))
@@ -268,9 +284,16 @@ class JupyterPanel(QWidget):
                 self._card.hide()
                 self._browser.show()
             else:
-                # 执行诊断，提供详细的错误信息
-                diag_msg = self._diagnose_failure()
-                self._card.show_error(diag_msg)
+                # 诊断包含 socket/HTTP 探测（最坏阻塞约 5 秒），必须放到后台线程，
+                # 否则 WebEngine 加载失败时整个主界面会冻结。
+                self._card.show_error("正在诊断失败原因…")
+                import threading
+
+                def _diagnose_worker():
+                    msg = self._diagnose_failure()
+                    self._diagnosis_ready.emit(msg)
+
+                threading.Thread(target=_diagnose_worker, daemon=True, name="JupyterDiagnose").start()
 
     def _diagnose_failure(self) -> str:
         """诊断加载失败的原因，返回详细的错误描述"""

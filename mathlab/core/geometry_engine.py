@@ -1,9 +1,11 @@
+import logging
 import uuid
 from collections import defaultdict
+from functools import lru_cache
 
 import numpy as np
 from PySide6.QtCore import QObject, Signal
-from sympy import Abs, Eq, cos, exp, log, parse_expr, pi, sin, sqrt, symbols, tan
+from sympy import Abs, Eq, cos, exp, lambdify, log, parse_expr, pi, sin, sqrt, symbols, tan
 from sympy.parsing.sympy_parser import standard_transformations
 
 # 星号导入用于向后兼容（外部代码可能使用 `from geometry_engine import *`）
@@ -36,6 +38,46 @@ try:
 except Exception as e:
     print(f"Warning: C# geometry engine fallback triggered in geometry_engine.py. Error: {e}")
     cs_geometry = None
+
+
+# 约束表达式中允许使用的数学函数/常量
+_CONSTRAINT_LOCAL_FUNCS = {
+    "Eq": Eq,
+    "sqrt": sqrt,
+    "sin": sin,
+    "cos": cos,
+    "tan": tan,
+    "pi": pi,
+    "exp": exp,
+    "log": log,
+    "Abs": Abs,
+    "pow": pow,
+}
+
+
+@lru_cache(maxsize=256)
+def _compile_constraint_func(constraint_str: str, var_names: tuple):
+    """解析约束表达式并编译为数值函数（编译结果带缓存）。
+
+    交互场景（拖动几何点）会对同一组约束反复调用 solve_constraints，
+    而 lambdify 编译单个方程需数十毫秒；表达式与变量不变时直接复用。
+    解析或编译失败时返回 None，调用方跳过该约束。
+    """
+    local_dict = dict(_CONSTRAINT_LOCAL_FUNCS)
+    symbol_seq = []
+    for name in var_names:
+        sym = symbols(name)
+        local_dict[name] = sym
+        symbol_seq.append(sym)
+
+    try:
+        expr = parse_expr(constraint_str, local_dict=local_dict, transformations=standard_transformations)
+        if isinstance(expr, Eq):
+            expr = expr.lhs - expr.rhs
+        return lambdify(tuple(symbol_seq), expr, "numpy")
+    except Exception as e:
+        logging.getLogger(__name__).warning(f"Constraint compile failed: {e}")
+        return None
 
 
 class GeometryEngine(QObject):
@@ -479,11 +521,14 @@ class GeometryEngine(QObject):
         from scipy.optimize import least_squares
 
         variables = []
+        var_names = []
         var_to_idx = {}
-        equations = []
+        constraints = []
 
         points = list(self.get_objects_by_type("Point"))
 
+        # 每个点只创建一次符号：原实现在约束循环里对全部点重复构造 symbols，
+        # 点/约束较多时是 O(N×M) 次 SymPy 调用。
         for point in points:
             safe_id = point.id.replace("-", "_")
             x_sym = symbols(f"x_{safe_id}")
@@ -494,40 +539,35 @@ class GeometryEngine(QObject):
             var_to_idx[(point.id, "y")] = len(variables) + 1
             var_to_idx[(point.id, "z")] = len(variables) + 2  # 2. 索引映射
             variables.extend([x_sym, y_sym, z_sym])
+            # 3. 记录变量名（含 z），供约束解析/编译使用
+            var_names.extend([f"x_{safe_id}", f"y_{safe_id}", f"z_{safe_id}"])
 
         for obj in self.objects.values():
-            for constraint in obj.constraints:
-                if isinstance(constraint, str):
-                    try:
-                        allowed_symbols = {
-                            "Eq": Eq,
-                            "sqrt": sqrt,
-                            "sin": sin,
-                            "cos": cos,
-                            "tan": tan,
-                            "pi": pi,
-                            "exp": exp,
-                            "log": log,
-                            "Abs": Abs,
-                            "pow": pow,
-                        }
-                        for point in points:
-                            safe_id = point.id.replace("-", "_")
-                            allowed_symbols[f"x_{safe_id}"] = symbols(f"x_{safe_id}")
-                            allowed_symbols[f"y_{safe_id}"] = symbols(f"y_{safe_id}")
-                            allowed_symbols[f"z_{safe_id}"] = symbols(f"z_{safe_id}")  # 3. 允许用户输入含 z 的约束方程
-                        eq = parse_expr(
-                            constraint,
-                            local_dict=allowed_symbols,
-                            transformations=standard_transformations,
-                        )
-                        equations.append(eq)
-                    except Exception:
-                        pass
-                else:
-                    equations.append(constraint)
+            constraints.extend(obj.constraints)
 
-        if not equations or not variables:
+        if not constraints or not variables:
+            return None
+
+        # 将约束一次性编译为数值函数。
+        # 原实现在每次迭代中执行 subs()+evalf()（SymPy 纯 Python 运算），
+        # least_squares 每次迭代都要对全部方程求值，是约束求解的主要瓶颈；
+        # lambdify 编译后单次求值降至微秒级，且编译结果带缓存，
+        # 拖动几何点时反复求解无需重复编译。
+        var_names_tuple = tuple(var_names)
+        numeric_funcs = []
+        for constraint in constraints:
+            if isinstance(constraint, str):
+                fn = _compile_constraint_func(constraint, var_names_tuple)
+            else:
+                try:
+                    eq_expr = constraint.lhs - constraint.rhs if isinstance(constraint, Eq) else constraint
+                    fn = lambdify(tuple(variables), eq_expr, "numpy")
+                except Exception:
+                    fn = None
+            if fn is not None:
+                numeric_funcs.append(fn)
+
+        if not numeric_funcs:
             return None
 
         def objective(x):
@@ -536,21 +576,16 @@ class GeometryEngine(QObject):
             也能返回最小二乘意义上的最优解，而 fsolve 在这种情况下
             会直接抛出 shape mismatch 异常导致崩溃。"""
             result = []
-            var_dict = {}
-            for i, var in enumerate(variables):
-                var_dict[var] = x[i]
-
-            for eq in equations:
-                try:
-                    eq_expr = eq.lhs - eq.rhs if isinstance(eq, Eq) else eq
-                    val = float(eq_expr.subs(var_dict).evalf())
-                    result.append(val)
-                except Exception as e:
-                    # 求值失败时残差记为 0，避免优化器被异常打断
-                    import logging
-
-                    logging.getLogger(__name__).warning(f"Constraint evaluation failed: {e}")
+            for fn in numeric_funcs:
+                if fn is None:
                     result.append(0.0)
+                    continue
+                try:
+                    val = float(fn(*x))
+                except Exception:
+                    # 求值失败时残差记为 0，避免优化器被异常打断
+                    val = 0.0
+                result.append(val if np.isfinite(val) else 0.0)
 
             return np.array(result, dtype=float)
 
@@ -564,7 +599,7 @@ class GeometryEngine(QObject):
             # 自动选择 least_squares 算法：
             # - 'lm' (Levenberg-Marquardt)：要求方程数 ≥ 变量数，适合过约束/适定
             # - 'trf' (Trust Region Reflective)：兼容欠约束（方程数 < 变量数）
-            n_eq = len(equations)
+            n_eq = len(numeric_funcs)
             n_var = len(variables)
             method = "lm" if n_eq >= n_var else "trf"
             result_obj = least_squares(objective, np.array(initial_guess), method=method)

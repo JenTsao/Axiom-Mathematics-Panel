@@ -202,12 +202,16 @@ class UISetupMixin:
 
     def _refresh_notebook_ui(self) -> None:
         # 暴力清空 UI 然后让其重新为空
-        while self.notebook.scroll_layout.count() > 1:  # 结尾有弹簧
-            item = self.notebook.scroll_layout.takeAt(0)
+        from mathlab.core.notebook import CellType
+
+        layout = self.notebook.canvas_layout
+        while layout.count() > 1:  # 结尾有弹簧
+            item = layout.takeAt(0)
             if item.widget():
                 item.widget().deleteLater()
         self.notebook.ui_cells.clear()
-        self.notebook.add_new_cell(self.notebook.backend.add_cell("code", ""))
+        # add_new_cell 接收 CellType 枚举（此前误传 NotebookCell 实例）
+        self.notebook.add_new_cell(CellType.CODE)
 
     def toggle_algebra_panel(self, visible: bool) -> None:
         if visible:

@@ -11,7 +11,7 @@ Dynamic Function Explorer Panel - 动态函数探索器 (微积分强力驱动�
 import re
 
 import numpy as np
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QDoubleValidator, QFont
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -112,6 +112,13 @@ class FunctionExplorerPanel(QDockWidget):
         self.current_function_id = None
         self.parameter_sliders = {}
         self.function_type = "explicit"
+
+        # 参数滑块节流：一次拖动会产生上百次 valueChanged，
+        # 合并为 ~80ms 一次的重算/重绘，避免反复重建几何对象造成卡顿
+        self._param_update_timer = QTimer(self)
+        self._param_update_timer.setSingleShot(True)
+        self._param_update_timer.setInterval(80)
+        self._param_update_timer.timeout.connect(self._apply_parameter_update)
 
         self._build_ui()
 
@@ -496,7 +503,13 @@ class FunctionExplorerPanel(QDockWidget):
         self.params_group.setVisible(len(params) > 0)
 
     def _on_parameter_changed(self, param_name: str, value: float):
-        """参数值改变时更新函数"""
+        """参数值改变（高频触发）：仅重启节流定时器，不立即重算重绘。"""
+        if not self.expr_input.text():
+            return
+        self._param_update_timer.start()
+
+    def _apply_parameter_update(self):
+        """节流后的参数更新：替换表达式中的参数值并请求重绘。"""
         if not self.expr_input.text():
             return
 

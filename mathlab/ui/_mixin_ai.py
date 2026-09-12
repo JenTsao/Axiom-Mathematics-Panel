@@ -4,6 +4,8 @@
 以及后台 AI Worker (拟合/聚类/识别/生成) 相关的方法提取到此模块。
 """
 
+from PySide6.QtCore import QThreadPool
+
 from mathlab.core.ai_facade import AIFacade, AITaskType
 from mathlab.core.async_workers import (
     AIClusterWorker,
@@ -367,11 +369,24 @@ class AIMixin:
             except Exception as e:
                 logger.warning(f"执行几何绘图命令失败: {cmd} - {e}")
 
+    def _recycle_worker(self, worker) -> None:
+        """回收已结束的 Worker 引用。
+
+        AIXxxWorker 均为 QRunnable（非 QObject），没有 deleteLater()，
+        由 QThreadPool 在 run() 结束后依据 setAutoDelete(True) 自动释放。
+        这里只需要清理 Python 侧的活动集合与槽位引用，避免悬垂引用。
+        """
+        self.active_workers.discard(worker)
+        for attr in ("fit_worker", "cluster_worker", "recognize_worker", "generate_points_worker"):
+            if getattr(self, attr, None) is worker:
+                setattr(self, attr, None)
+
     def on_ai_fit_requested(self, points: list, model_type: str, params: dict = None) -> None:
         if not points:
             return
 
-        if self.fit_worker is not None and self.fit_worker.isRunning():
+        # QRunnable 没有 isRunning()，以是否仍在活动集合中判断运行状态
+        if self.fit_worker is not None and self.fit_worker in self.active_workers:
             return
 
         if params is None:
@@ -382,12 +397,12 @@ class AIMixin:
 
         self.fit_worker = AIFitWorker(self.ai_manager, points, model_type, **params)
         self.active_workers.add(self.fit_worker)
-        self.fit_worker.finished.connect(lambda res, w=self.fit_worker: self.on_ai_worker_finished(res, w))
-        self.fit_worker.error.connect(lambda msg, w=self.fit_worker: self.on_ai_worker_error(msg, w))
-        self.fit_worker.start()
+        self.fit_worker.signals.finished.connect(lambda res, w=self.fit_worker: self.on_ai_worker_finished(res, w))
+        self.fit_worker.signals.error.connect(lambda msg, w=self.fit_worker: self.on_ai_worker_error(msg, w))
+        QThreadPool.globalInstance().start(self.fit_worker)
 
     def on_ai_worker_finished(self, result: dict, worker):
-        # 在 deleteLater 之前完成所有 worker 类型判断，避免竞态
+        # 在回收 worker 之前完成所有 worker 类型判断，避免竞态
         if isinstance(worker, AIFitWorker):
             self.statusBar().showMessage("模型训练完成", 3000)
             self.ai_tools_panel.set_fit_result(result)
@@ -398,16 +413,13 @@ class AIMixin:
             self.statusBar().showMessage("识别完成", 3000)
             self.ai_tools_panel.set_recognition_result(result)
 
-        # 清理 worker
-        if worker in self.active_workers:
-            self.active_workers.remove(worker)
-            worker.deleteLater()
+        self._recycle_worker(worker)
 
     def on_ai_cluster_requested(self, points: list, method: str, params: dict) -> None:
         if not points:
             return
 
-        if self.cluster_worker is not None and self.cluster_worker.isRunning():
+        if self.cluster_worker is not None and self.cluster_worker in self.active_workers:
             return
 
         self.ai_tools_panel.set_loading_state(True)
@@ -415,12 +427,14 @@ class AIMixin:
 
         self.cluster_worker = AIClusterWorker(self.ai_manager, points, method, params)
         self.active_workers.add(self.cluster_worker)
-        self.cluster_worker.finished.connect(lambda res, w=self.cluster_worker: self.on_ai_worker_finished(res, w))
-        self.cluster_worker.error.connect(lambda msg, w=self.cluster_worker: self.on_ai_worker_error(msg, w))
-        self.cluster_worker.start()
+        self.cluster_worker.signals.finished.connect(
+            lambda res, w=self.cluster_worker: self.on_ai_worker_finished(res, w)
+        )
+        self.cluster_worker.signals.error.connect(lambda msg, w=self.cluster_worker: self.on_ai_worker_error(msg, w))
+        QThreadPool.globalInstance().start(self.cluster_worker)
 
     def on_ai_recognize_requested(self, image_data: list) -> None:
-        if self.recognize_worker is not None and self.recognize_worker.isRunning():
+        if self.recognize_worker is not None and self.recognize_worker in self.active_workers:
             return
 
         self.ai_tools_panel.set_loading_state(True)
@@ -428,20 +442,21 @@ class AIMixin:
 
         self.recognize_worker = AIRecognizeWorker(self.ai_manager, image_data)
         self.active_workers.add(self.recognize_worker)
-        self.recognize_worker.finished.connect(lambda res, w=self.recognize_worker: self.on_ai_worker_finished(res, w))
-        self.recognize_worker.error.connect(lambda msg, w=self.recognize_worker: self.on_ai_worker_error(msg, w))
-        self.recognize_worker.start()
+        self.recognize_worker.signals.finished.connect(
+            lambda res, w=self.recognize_worker: self.on_ai_worker_finished(res, w)
+        )
+        self.recognize_worker.signals.error.connect(lambda msg, w=self.recognize_worker: self.on_ai_worker_error(msg, w))
+        QThreadPool.globalInstance().start(self.recognize_worker)
 
     def on_ai_worker_error(self, error_msg: str, worker=None):
-        if worker and worker in self.active_workers:
-            self.active_workers.remove(worker)
-            worker.deleteLater()
+        if worker is not None:
+            self._recycle_worker(worker)
 
         self.ai_tools_panel.set_loading_state(False)
         self.statusBar().showMessage(f"后台运算出错: {error_msg}", 5000)
 
     def on_ai_generate_points(self, n: int) -> None:
-        if self.generate_points_worker is not None and self.generate_points_worker.isRunning():
+        if self.generate_points_worker is not None and self.generate_points_worker in self.active_workers:
             return
 
         self.ai_tools_panel.set_loading_state(True)
@@ -451,18 +466,16 @@ class AIMixin:
             self.ai_manager, n, x_range=(-200, 200), y_range=(-200, 200)
         )
         self.active_workers.add(self.generate_points_worker)
-        self.generate_points_worker.finished.connect(
+        self.generate_points_worker.signals.finished.connect(
             lambda res, w=self.generate_points_worker: self.on_generate_points_worker_finished(res, w)
         )
-        self.generate_points_worker.error.connect(
+        self.generate_points_worker.signals.error.connect(
             lambda msg, w=self.generate_points_worker: self.on_ai_worker_error(msg, w)
         )
-        self.generate_points_worker.start()
+        QThreadPool.globalInstance().start(self.generate_points_worker)
 
     def on_generate_points_worker_finished(self, result: dict, worker):
-        if worker in self.active_workers:
-            self.active_workers.remove(worker)
-            worker.deleteLater()
+        self._recycle_worker(worker)
 
         self.ai_tools_panel.set_loading_state(False)
         self.statusBar().showMessage("随机点生成完成", 3000)

@@ -131,6 +131,8 @@ class OmniBar(QWidget):
         self.fade_anim = QPropertyAnimation(self, b"windowOpacity")
         self.fade_anim.setDuration(150)  # 150ms 极速响应
         self.fade_anim.setEasingCurve(QEasingCurve.Type.InOutSine)
+        # 只连接一次，避免 dismiss() 重复 connect 造成回调累积
+        self.fade_anim.finished.connect(self._on_fade_out_finished)
 
     def summon(self, parent_rect: QRect):
         """召唤命令盘：居中浮现"""
@@ -141,6 +143,9 @@ class OmniBar(QWidget):
 
         self.setGeometry(x, y, width, height)
         self.show()
+
+        # 中断可能仍在进行的淡出动画，避免其 finished 回调误隐藏命盘
+        self.fade_anim.stop()
 
         # 执行淡入动画
         self.fade_anim.setStartValue(0.0)
@@ -157,16 +162,13 @@ class OmniBar(QWidget):
         self.fade_anim.setStartValue(self.windowOpacity())
         self.fade_anim.setEndValue(0.0)
 
-        # 动画结束后真正隐藏，节约系统资源
-        self.fade_anim.finished.connect(self._on_fade_out_finished)
+        # 动画结束后由 _on_fade_out_finished 真正隐藏，节约系统资源
         self.fade_anim.start()
 
     def _on_fade_out_finished(self):
-        try:
-            # [BUG修复] 增加 try-except 保护，防止重复 disconnect 导致 RuntimeError
-            self.fade_anim.finished.disconnect(self._on_fade_out_finished)
-        except RuntimeError:
-            pass
+        # 淡入结束时也会触发 finished，此时透明度不为 0，不应隐藏
+        if self.windowOpacity() > 0.01:
+            return
         self.hide()
         # 清空前端输入框，避免下次召唤残留上次文本
         self.web_view.page().runJavaScript(

@@ -8,15 +8,31 @@ class Point(GeometricObject):
     def __init__(self, obj_id, name, x=0, y=0, z=0):
         super().__init__(obj_id, name, "Point")
         self.coordinates = {"x": x, "y": y, "z": z}  # 新增 z
-        # 符号表达式也增加 z 维度，用于 3D 约束求解
-        safe_name = name.replace("-", "_")
-        self.symbolic_expr = (
-            symbols(f"x_{safe_name}"),
-            symbols(f"y_{safe_name}"),
-            symbols(f"z_{safe_name}"),
-        )
+        # 符号表达式（z 维度，用于 3D 约束求解）延迟到首次访问时构造：
+        # 每次创建点都调用 3 次 SymPy symbols() 会显著拖慢批量绘图/反序列化。
+        self._symbolic_expr = None
+
+    @property
+    def symbolic_expr(self):
+        """首次访问时才创建符号元组（仅供约束求解等场景使用）。"""
+        if self._symbolic_expr is None:
+            safe_name = self.name.replace("-", "_")
+            self._symbolic_expr = (
+                symbols(f"x_{safe_name}"),
+                symbols(f"y_{safe_name}"),
+                symbols(f"z_{safe_name}"),
+            )
+        return self._symbolic_expr
+
+    @symbolic_expr.setter
+    def symbolic_expr(self, value):
+        self._symbolic_expr = value
 
     def update_coordinates(self, x=None, y=None, z=None):
+        # 防御：引擎遍历依赖链时会以 update_coordinates(engine) 调用，
+        # 此时首个位置参数是引擎实例而非坐标值，需直接忽略。
+        if x is not None and hasattr(x, "objects") and hasattr(x, "dependencies"):
+            return
         if x is not None:
             self.coordinates["x"] = x
         if y is not None:

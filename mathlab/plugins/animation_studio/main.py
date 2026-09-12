@@ -2,6 +2,7 @@
 """动画演示插件 — 几何变换动画、函数参数动画、轨迹追踪动画。"""
 
 import math
+import re
 
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
@@ -476,8 +477,9 @@ class AnimationPanelWidget(QWidget):
         a_val = a_start + (a_end - a_start) * t
         expr_template = self._anim_state["func_expr"]
 
-        # 替换参数 a 的值
-        expr = expr_template.replace("a", f"({a_val})")
+        # 替换参数 a 的值：必须使用词边界匹配，
+        # 否则 atan/abs/tan 等函数名中的字母 a 也会被替换导致表达式损坏
+        expr = re.sub(r"\ba\b", f"({a_val})", expr_template)
 
         # 删除旧的函数图并创建新的
         old_id = self._anim_state.get("func_id")

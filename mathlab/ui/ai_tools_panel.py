@@ -435,8 +435,14 @@ class AIToolsPanel(QDockWidget):
 
         # 将任务推入线程池
         worker = TaskWorker(get_jupyter_sandbox().execute_code, code, timeout=10)
-        worker.signals.result.connect(self.on_execution_finished)
+        worker.signals.finished.connect(self.on_execution_finished)
+        worker.signals.error.connect(self._on_training_error)
         QThreadPool.globalInstance().start(worker)
+
+    def _on_training_error(self, error_msg: str):
+        """训练任务异常兜底：恢复按钮状态并提示错误，避免永久卡在 loading。"""
+        self.set_loading_state(False)
+        self.output_area.append(f"<span style='color:red;'>❌ {error_msg}</span>")
 
     def on_execution_finished(self, result_dict):
         # 恢复按钮
@@ -1084,8 +1090,6 @@ class AIToolsPanel(QDockWidget):
         self.token_label.setText(f"⚡ {total} Tokens")
 
     def on_ai_generate_request(self, user_prompt):
-        from PySide6.QtCore import QThreadPool
-
         from mathlab.core.ai_manager import GeometryAgent
         from mathlab.core.async_workers import TaskWorker
 
@@ -1111,5 +1115,5 @@ class AIToolsPanel(QDockWidget):
                 elif hasattr(self, "console"):
                     self.console.append(str(result["result"]))
 
-        worker.signals.result.connect(on_complete)
+        worker.signals.finished.connect(on_complete)
         QThreadPool.globalInstance().start(worker)

@@ -2,7 +2,7 @@ import multiprocessing
 import threading
 import traceback
 
-from PySide6.QtCore import QObject, QRunnable, QThreadPool, Signal
+from PySide6.QtCore import QCoreApplication, QObject, QRunnable, QThreadPool, Signal
 
 from mathlab.utils.logger import get_logger
 
@@ -15,6 +15,27 @@ class WorkerSignals(QObject):
     finished = Signal(object)  # 任务成功完成，返回结果字典/对象
     error = Signal(str)  # 任务失败，返回错误堆栈
     progress = Signal(int)  # (预留) 任务进度 0-100
+
+
+class _CallbackRelay(QObject):
+    """后台线程 → 创建线程（通常是主线程）的回调中继。
+
+    PySide6 中信号连接普通 Python 函数时，回调会在“发射信号的线程”直接执行；
+    若 worker 线程直接跑 UI 更新代码属于未定义行为。通过本中继对象（归属于
+    主线程）中转，Qt 会自动以 QueuedConnection 把回调投递到主线程执行。
+    """
+
+    invoke = Signal(object)  # 参数为无参可调用对象
+
+    def __init__(self):
+        super().__init__()
+        self.invoke.connect(self._execute)
+
+    def _execute(self, fn):
+        try:
+            fn()
+        except Exception:
+            logger.exception("异步任务回调执行异常")
 
 
 class TaskWorker(QRunnable):
@@ -43,9 +64,15 @@ class TaskWorker(QRunnable):
             self.signals.error.emit(str(e))
 
 
-class TaskManager(QObject):
+class TaskManager:
     """
     全局异步任务调度中心 (单例模式)
+
+    注：本类不继承 QObject。任务信号由各 Worker 自带的
+    WorkerSignals(QObject) 承载，调度中心自身不需要 Qt 对象；
+    若继承 QObject，单例在第二次实例化时会触发 libshiboken 的
+    "You can't initialize a QObject object twice" RuntimeError，
+    导致第二次之后的所有异步任务提交直接失败。
     """
 
     _instance = None
@@ -54,9 +81,13 @@ class TaskManager(QObject):
     def __new__(cls):
         with cls._lock:
             if cls._instance is None:
-                cls._instance = super(TaskManager, cls).__new__(cls)
+                cls._instance = super().__new__(cls)
                 cls._instance._init_pool()
         return cls._instance
+
+    def __init__(self):
+        # 单例：初始化已在 __new__ 中一次性完成
+        pass
 
     def _init_pool(self):
         self.thread_pool = QThreadPool.globalInstance()
@@ -66,8 +97,16 @@ class TaskManager(QObject):
         # 用于防抖与任务覆盖：跟踪各组是否有任务运行及挂起的最新请求
         self._running_groups = set()
         self._pending_requests = {}
-        # [BUG修复] 保护共享状态的线程锁
+        # 保护共享状态的线程锁
         self._state_lock = threading.Lock()
+        # 保持运行中 Worker 的强引用：TaskWorker 为 QRunnable，
+        # 若 Python 侧失去引用会被 GC 回收，连带 signals 对象销毁导致回调静默丢失
+        self._active_workers = set()
+        # 主线程回调中继：确保归属主线程，无论 TaskManager 首次在哪个线程被实例化
+        self._relay = _CallbackRelay()
+        app = QCoreApplication.instance()
+        if app is not None and self._relay.thread() is not app.thread():
+            self._relay.moveToThread(app.thread())
 
         logger.info(f"TaskManager 启动，最大并发线程数: {max_threads}")
 
@@ -102,19 +141,29 @@ class TaskManager(QObject):
 
     def _submit_internal(self, group_id, fn, on_success, on_error, *args, **kwargs):
         worker = TaskWorker(fn, *args, **kwargs)
+        # 持有强引用直至任务结束，防止 Worker/信号被 GC 提前回收
+        with self._state_lock:
+            self._active_workers.add(worker)
+
+        def _release_worker():
+            with self._state_lock:
+                self._active_workers.discard(worker)
 
         def success_interceptor(result):
             try:
                 if on_success:
-                    on_success(result)
+                    # 经由中继对象排队回主线程执行，保证 UI 回调线程安全
+                    self._relay.invoke.emit(lambda: on_success(result))
             finally:
+                _release_worker()
                 self._check_pending(group_id)
 
         def error_interceptor(err):
             try:
                 if on_error:
-                    on_error(err)
+                    self._relay.invoke.emit(lambda: on_error(err))
             finally:
+                _release_worker()
                 self._check_pending(group_id)
 
         worker.signals.finished.connect(success_interceptor)
