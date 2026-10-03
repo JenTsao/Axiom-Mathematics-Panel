@@ -97,10 +97,13 @@ class MenusMixin:
         self.function_explorer_action = QAction(t("function_explorer.title"), self)
         self.function_explorer_action.setCheckable(True)
 
-        self.math_console_action = QAction("数学控制台 (Octave)", self)
+        self.math_console_action = QAction(t("math_console.title"), self)
         self.math_console_action.setCheckable(True)
         self.math_console_action.setChecked(True)
         self.math_console_action.setShortcut("Ctrl+Shift+M")
+
+        self.reset_layout_action = QAction(t("view.reset_layout"), self)
+        self.reset_layout_action.setObjectName("reset_layout_action")
 
         self.theme_action = QAction(t("main_window.theme"), self)
         self.language_action = QAction(t("main_window.language"), self)
@@ -114,6 +117,7 @@ class MenusMixin:
         self.view_menu.addAction(self.notebook_action)
         self.view_menu.addAction(self.function_explorer_action)
         self.view_menu.addSeparator()
+        self.view_menu.addAction(self.reset_layout_action)
         self.view_menu.addAction(self.theme_action)
         self.view_menu.addAction(self.language_action)
         self.preferences_action = QAction(t("main_window.preferences"), self)
@@ -136,8 +140,9 @@ class MenusMixin:
         self.geometry_tool_action = QAction(t("main_window.geometry_tools"), self)
         self.algebra_tool_action = QAction(t("main_window.algebra_tools"), self)
         self.ai_tool_action = QAction(t("main_window.ai_tools"), self)
-        self.signal_lab_action = QAction("⚡ 信号处理实验室 (FFT)", self)
-        self.fractal_gpu_action = QAction("🚀 极致深渊：GPU 分形探索器", self)
+        # R-26：语义色治理 — 菜单名去掉装饰性 emoji，接 i18n
+        self.signal_lab_action = QAction(t("tools.signal_lab"), self)
+        self.fractal_gpu_action = QAction(t("tools.fractal_explorer"), self)
 
         self.tools_menu.addAction(self.geometry_tool_action)
         self.tools_menu.addAction(self.algebra_tool_action)
@@ -148,9 +153,7 @@ class MenusMixin:
         self.help_menu = QMenu(t("menu.help"), self)
 
         self.about_action = QAction(t("main_window.about"), self)
-        self.tutorial_action = QAction(t("main_window.tutorial"), self)
 
-        self.help_menu.addAction(self.tutorial_action)
         self.help_menu.addAction(self.about_action)
 
         menu_bar.addMenu(self.file_menu)
@@ -172,20 +175,21 @@ class MenusMixin:
         self.exit_action.triggered.connect(self.close)
 
         self.delete_action.triggered.connect(self.on_delete_selected)
-        self.undo_action.triggered.connect(
-            lambda: (
-                self.console.display_system_message("Undo (撤销) 功能尚未实现", level="warn")
-                if hasattr(self, "console")
-                else None
-            )
-        )
-        self.redo_action.triggered.connect(
-            lambda: (
-                self.console.display_system_message("Redo (重做) 功能尚未实现", level="warn")
-                if hasattr(self, "console")
-                else None
-            )
-        )
+
+        # ── 撤销/重做接 UndoStack（R-10，§6.4）────────────────────────────
+        undo_stack = getattr(self, "undo_stack", None)
+        if undo_stack is not None and undo_stack.enabled:
+            self.undo_action.triggered.connect(undo_stack.undo)
+            self.redo_action.triggered.connect(undo_stack.redo)
+            # 可用性信号驱动灰置（保留用户可发现性，而非隐藏）
+            undo_stack.undo_available.connect(self.undo_action.setEnabled)
+            undo_stack.redo_available.connect(self.redo_action.setEnabled)
+            self.undo_action.setEnabled(False)
+            self.redo_action.setEnabled(False)
+        else:
+            # D-3：偏好关闭 enable_undo 时灰置
+            self.undo_action.setEnabled(False)
+            self.redo_action.setEnabled(False)
 
         self.algebra_panel_action.triggered.connect(self.toggle_algebra_panel)
         self.properties_panel_action.triggered.connect(self.toggle_properties_panel)
@@ -205,6 +209,7 @@ class MenusMixin:
         self.theme_action.triggered.connect(self.show_theme_dialog)
         self.language_action.triggered.connect(self.show_language_dialog)
         self.preferences_action.triggered.connect(self.show_preferences_dialog)
+        self.reset_layout_action.triggered.connect(self.reset_default_layout)
 
         self.ai_scatter_action.triggered.connect(lambda: self.toggle_ai_tools_panel(True))
         self.ai_cluster_action.triggered.connect(lambda: self.toggle_ai_tools_panel(True))
@@ -223,27 +228,35 @@ class MenusMixin:
 
     def setup_toolbar(self):
         self.toolbar = QToolBar("Main Toolbar")
+        self.toolbar.setObjectName("mainToolbar")  # restoreState 依赖 objectName
         self.toolbar.setIconSize(QSize(20, 20))
         self.toolbar.setToolButtonStyle(Qt.ToolButtonIconOnly)
 
+        # 6 个工具 action 补 tooltip + accessibleName（R-28 无障碍基线）
         self.select_action = QAction(t("main_window.select"), self)
         self.select_action.setCheckable(True)
         self.select_action.setChecked(True)
+        self.select_action.setToolTip(t("main_window.select"))
 
         self.point_action = QAction(t("main_window.point"), self)
         self.point_action.setCheckable(True)
+        self.point_action.setToolTip(t("main_window.point"))
 
         self.segment_action = QAction(t("main_window.segment"), self)
         self.segment_action.setCheckable(True)
+        self.segment_action.setToolTip(t("main_window.segment"))
 
         self.circle_action = QAction(t("main_window.circle"), self)
         self.circle_action.setCheckable(True)
+        self.circle_action.setToolTip(t("main_window.circle"))
 
         self.polygon_action = QAction(t("main_window.polygon"), self)
         self.polygon_action.setCheckable(True)
+        self.polygon_action.setToolTip(t("main_window.polygon"))
 
         self.pan_action = QAction(t("main_window.pan"), self)
         self.pan_action.setCheckable(True)
+        self.pan_action.setToolTip(t("main_window.pan"))
 
         self.tool_actions = [
             self.select_action,
@@ -281,38 +294,15 @@ class MenusMixin:
         self.lang_btn.setToolTip(t("main_window.language"))
         self.lang_btn.setObjectName("lang_btn")
         self.lang_btn.setFixedSize(64, 28)
-        self.lang_btn.setStyleSheet(
-            "QPushButton{"
-            "  background:#f8f9ff;"
-            "  border:1px solid #c3c6d7;"
-            "  border-radius:4px;"
-            "  padding:2px 8px;"
-            "  font-size:11px;"
-            "  font-weight:700;"
-            "  color:#434655;"
-            "}"
-            "QPushButton:hover{"
-            "  background:#e5eeff;"
-            "  border-color:#004ac6;"
-            "  color:#004ac6;"
-            "}"
-        )
+        # 样式由 styles.qss #lang_btn 规则提供（R-20：深色下无浅色贴片）
         self.lang_btn.clicked.connect(self._toggle_language)
         self.toolbar.addWidget(self.lang_btn)
 
         self.settings_btn = QPushButton()
+        self.settings_btn.setObjectName("settings_btn")
         self.settings_btn.setToolTip(t("main_window.preferences"))
+        self.settings_btn.setAccessibleName(t("main_window.preferences"))
         self.settings_btn.setFixedSize(28, 28)
-        self.settings_btn.setStyleSheet(
-            "QPushButton{"
-            "  background:transparent;"
-            "  border:none;"
-            "}"
-            "QPushButton:hover{"
-            "  background:#e5eeff;"
-            "  border-radius:4px;"
-            "}"
-        )
         self.settings_btn.setIconSize(QSize(18, 18))
         self.settings_btn.clicked.connect(self.show_preferences_dialog)
         self.toolbar.addWidget(self.settings_btn)

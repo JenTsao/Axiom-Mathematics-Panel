@@ -198,16 +198,8 @@ def main():
         icon_path = _find_resource("resources", "icons", "app_icon.png")
         app.setWindowIcon(QIcon(icon_path))
 
-        try:
-            stylesheet_path = _find_resource("ui", "styles.qss")
-            with open(stylesheet_path, "r", encoding="utf-8") as f:
-                app.setStyleSheet(f.read())
-            logger.debug("样式表加载完毕: %s", stylesheet_path)
-        except FileNotFoundError:
-            logger.warning("样式表文件未找到: %s", stylesheet_path)
-        except Exception as e:
-            logger.warning("样式表加载失败: %s", e)
-
+        # 样式注入已收敛到 theme_manager.set_theme()（唯一写入点，A-02）；
+        # MainWindow.__init__ 会通过 DialogsMixin.apply_theme() 触发首次应用。
         logger.info("正在创建主窗口...")
         # MainWindow.__init__ 内部完成所有引擎初始化、REPL 命名空间注入、
         # 事件监听注册和插件系统启动，消除双重初始化反模式

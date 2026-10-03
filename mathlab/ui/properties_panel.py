@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
 )
 
 from mathlab.utils.i18n_manager import t
+from mathlab.utils.theme_tokens import get_tokens
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Helper: collapsible section header widget
@@ -49,16 +50,8 @@ class _SectionHeader(QLabel):
         super().setText(f"{self._arrow} {text}")
 
     def _apply_style(self):
+        # 样式由 styles.qss `QLabel#section_label` 提供（R-27：内联清零）
         self._arrow = "▸" if self._collapsed else "▾"
-        self.setStyleSheet(
-            "QLabel#section_label {"
-            "  font-size: 11px;"
-            "  font-weight: 700;"
-            "  color: #737686;"
-            "  letter-spacing: 1px;"
-            "  padding: 6px 0px 4px 0px;"
-            "}"
-        )
         super().setText(f"{self._arrow} {self._base_text}")
 
     def set_body(self, body: QWidget):
@@ -93,12 +86,13 @@ class _ColorDot(QPushButton):
         self._refresh_style()
 
     def _refresh_style(self):
+        # ALLOWED-INLINE: dynamic user color swatch（色值即业务数据，运行时才知道）
         if self._selected:
             self.setStyleSheet(
                 f"QPushButton {{"
                 f"  background-color: {self.hex_color};"
                 f"  border-radius: 12px;"
-                f"  border: 2.5px solid #ffffff;"
+                f"  border: 2.5px solid {get_tokens()['fg.primary']};"
                 f"}}"
                 # outer ring via box-shadow is not supported in Qt;
                 # we paint it manually in paintEvent instead
@@ -140,7 +134,7 @@ def _make_divider() -> QFrame:
     line = QFrame()
     line.setFrameShape(QFrame.Shape.HLine)
     line.setFrameShadow(QFrame.Shadow.Sunken)
-    line.setStyleSheet("color: #e0e2ec; margin: 4px 0;")
+    # 样式由 styles.qss QFrame[frameShape] 规则提供（R-27）
     return line
 
 
@@ -160,15 +154,21 @@ class PropertiesPanel(QDockWidget):
     stroke_changed = Signal(str, float)  # (obj_id, 1.0-10.0)
     label_toggled = Signal(str, bool)  # (obj_id, show_label)
 
-    COLORS = ["#004ac6", "#4b41e1", "#006058", "#ba1a1a"]
+    @staticmethod
+    def _default_colors() -> list[str]:
+        """色板取自当前主题 token（R-27：禁止裸 HEX 字面量）。"""
+        tokens = get_tokens()
+        return [tokens["accent.base"], tokens["obj.segment"], tokens["obj.circle"], tokens["danger"]]
 
     def __init__(self, parent=None):
         super().__init__(t("properties_panel.title"), parent)
         self.setAllowedAreas(Qt.DockWidgetArea.RightDockWidgetArea)
         self.setMinimumWidth(220)
+        self.setObjectName("dockPropertiesInner")
 
         self._current_obj_id: str | None = None
         self._block_signals = False
+        self.COLORS = self._default_colors()
 
         # ── outer scroll area ─────────────────────────────────────────
         self._scroll_area = QScrollArea()
@@ -185,13 +185,6 @@ class PropertiesPanel(QDockWidget):
         # ── title label ("PROPERTIES: …") ────────────────────────────
         self._title_label = QLabel(t("properties_panel.title").upper())
         self._title_label.setObjectName("section_label")
-        self._title_label.setStyleSheet(
-            "QLabel#section_label {"
-            "  font-size: 11px; font-weight: 700;"
-            "  color: #737686; letter-spacing: 1px;"
-            "  padding: 6px 0 6px 0;"
-            "}"
-        )
         root_layout.addWidget(self._title_label)
         root_layout.addWidget(_make_divider())
 
@@ -254,7 +247,6 @@ class PropertiesPanel(QDockWidget):
         color_row = QHBoxLayout()
         color_row.setSpacing(6)
         self._color_label = QLabel(t("properties_panel.color"))
-        self._color_label.setStyleSheet("font-size: 13px; color: #434655;")
         self._color_label.setFixedWidth(64)
         color_row.addWidget(self._color_label)
 
@@ -271,18 +263,16 @@ class PropertiesPanel(QDockWidget):
         opacity_row = QHBoxLayout()
         opacity_row.setSpacing(8)
         self._opacity_label = QLabel(t("properties_panel.opacity"))
-        self._opacity_label.setStyleSheet("font-size: 13px; color: #434655;")
         self._opacity_label.setFixedWidth(64)
         opacity_row.addWidget(self._opacity_label)
 
         self._opacity_value_label = QLabel("100%")
-        self._opacity_value_label.setStyleSheet("font-size: 12px; color: #737686; min-width: 36px;")
         self._opacity_value_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
 
         self._opacity_slider = QSlider(Qt.Orientation.Horizontal)
         self._opacity_slider.setRange(0, 100)
         self._opacity_slider.setValue(100)
-        self._opacity_slider.setStyleSheet(self._slider_style())
+        # 滑块样式由 styles.qss `QDockWidget QSlider` 规则提供（R-27）
         self._opacity_slider.valueChanged.connect(self._on_opacity_changed)
 
         opacity_row.addWidget(self._opacity_slider)
@@ -293,18 +283,15 @@ class PropertiesPanel(QDockWidget):
         stroke_row = QHBoxLayout()
         stroke_row.setSpacing(8)
         self._stroke_label = QLabel(t("properties_panel.stroke"))
-        self._stroke_label.setStyleSheet("font-size: 13px; color: #434655;")
         self._stroke_label.setFixedWidth(64)
         stroke_row.addWidget(self._stroke_label)
 
         self._stroke_value_label = QLabel("2px")
-        self._stroke_value_label.setStyleSheet("font-size: 12px; color: #737686; min-width: 36px;")
         self._stroke_value_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
 
         self._stroke_slider = QSlider(Qt.Orientation.Horizontal)
         self._stroke_slider.setRange(1, 10)
         self._stroke_slider.setValue(2)
-        self._stroke_slider.setStyleSheet(self._slider_style())
         self._stroke_slider.valueChanged.connect(self._on_stroke_changed)
 
         stroke_row.addWidget(self._stroke_slider)
@@ -321,7 +308,6 @@ class PropertiesPanel(QDockWidget):
 
         # ── Show Label checkbox ───────────────────────────────────────
         self._show_label_cb = QCheckBox(t("properties_panel.show_label"))
-        self._show_label_cb.setStyleSheet("font-size: 13px; color: #44475a;")
         self._show_label_cb.setChecked(True)
         self._show_label_cb.toggled.connect(self._on_label_toggled)
         layout.addWidget(self._show_label_cb)
@@ -361,17 +347,7 @@ class PropertiesPanel(QDockWidget):
         self._definition_edit = QTextEdit()
         self._definition_edit.setReadOnly(True)
         self._definition_edit.setFixedHeight(70)
-        self._definition_edit.setStyleSheet(
-            "QTextEdit {"
-            "  font-family: 'Consolas', 'JetBrains Mono', monospace;"
-            "  font-size: 13px;"
-            "  color: #0b1c30;"
-            "  background: #f8f9ff;"
-            "  border: 1px solid #c3c6d7;"
-            "  border-radius: 4px;"
-            "  padding: 6px 8px;"
-            "}"
-        )
+        # 样式由 styles.qss QTextEdit / QLineEdit[readOnly] 规则提供（R-27）
         layout.addWidget(self._definition_edit)
         return body
 
@@ -379,39 +355,26 @@ class PropertiesPanel(QDockWidget):
     # Style helpers
     # ──────────────────────────────────────────────────────────────────
 
-    @staticmethod
-    def _slider_style() -> str:
-        return (
-            "QSlider::groove:horizontal {"
-            "  height: 4px; background: #d0d3e2; border-radius: 2px;"
-            "}"
-            "QSlider::handle:horizontal {"
-            "  width: 14px; height: 14px; margin: -5px 0;"
-            "  background: #004ac6; border-radius: 7px;"
-            "}"
-            "QSlider::sub-page:horizontal {"
-            "  background: #004ac6; border-radius: 2px;"
-            "}"
-        )
-
     def _apply_tab_styles(self):
+        """名称/值切换按钮的选中态样式（色值全部取自 token — R-27）。"""
+        tokens = get_tokens()
         active_style = (
             "QPushButton {"
-            "  background: #004ac6; color: #ffffff;"
+            f"  background: {tokens['accent.base']}; color: {tokens['fg.onAccent']};"
             "  font-size: 12px; font-weight: 600;"
-            "  border: 1px solid #004ac6;"
+            f"  border: 1px solid {tokens['accent.base']};"
             "  padding: 0 8px;"
             "}"
         )
         inactive_style = (
             "QPushButton {"
-            "  background: #f3f4ff; color: #44475a;"
+            f"  background: {tokens['bg.surface']}; color: {tokens['fg.secondary']};"
             "  font-size: 12px;"
-            "  border: 1px solid #caced9;"
+            f"  border: 1px solid {tokens['border.subtle']};"
             "  padding: 0 8px;"
             "}"
             "QPushButton:hover {"
-            "  background: #e8eaff;"
+            f"  background: {tokens['bg.hover']};"
             "}"
         )
         left_radius = "border-top-left-radius: 6px; border-bottom-left-radius: 6px;"

@@ -4,8 +4,6 @@
 相关的方法提取到此模块，降低主窗口文件的体积与复杂度。
 """
 
-import os
-
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import QDockWidget, QTabWidget
@@ -41,7 +39,7 @@ class UISetupMixin:
 
     def setup_ui(self):
         self.central_tabs = QTabWidget()
-        self.central_tabs.setStyleSheet("QTabWidget::pane { border: none; }")
+        self.central_tabs.setObjectName("central_tabs")
 
         self.central_widget = GeometryCanvas(self)
         self.notebook = NotebookPanel(self)
@@ -56,8 +54,9 @@ class UISetupMixin:
         except ImportError:
             self.geogebra_panel = None
 
-        self.central_tabs.addTab(self.notebook, t("notebook.title") or "Interactive Notebook")
+        # R-08：Tab 序调整为 画板 → Notebook → Mini GeoGebra → Jupyter（冷启动落在画板）
         self.central_tabs.addTab(self.central_widget, t("main_window.geometry_tools") or "Geometry Canvas")
+        self.central_tabs.addTab(self.notebook, t("notebook.title") or "Interactive Notebook")
         if self.geogebra_panel:
             self.central_tabs.addTab(self.geogebra_panel, "Mini GeoGebra")
 
@@ -118,42 +117,50 @@ class UISetupMixin:
             logger.warning("Jupyter 初始化失败（不影响其他功能）：%s", exc)
 
     def setup_docks(self):
+        # R-14/UI-10：Dock 标题不再 .upper()；每个 Dock 必须 setObjectName
+        # （restoreState / QSS 选择器 / 测试定位三者共同依赖，§10）
         self.algebra_panel = AlgebraPanel(self)
+        self.algebra_panel.setObjectName("dockAlgebra")
         self.addDockWidget(Qt.LeftDockWidgetArea, self.algebra_panel)
-        self.algebra_panel.setWindowTitle(t("algebra_panel.title").upper())
+        self.algebra_panel.setWindowTitle(t("algebra_panel.title"))
 
         self.properties_panel = PropertiesPanel(self)
+        self.properties_panel.setObjectName("dockProperties")
         self.addDockWidget(Qt.RightDockWidgetArea, self.properties_panel)
-        self.properties_panel.setWindowTitle(t("properties_panel.title").upper())
+        self.properties_panel.setWindowTitle(t("properties_panel.title"))
 
         self.console = PythonConsole(self)
+        self.console.setObjectName("dockConsole")
         self.addDockWidget(Qt.BottomDockWidgetArea, self.console)
-        self.console.setWindowTitle(t("console.title").upper())
+        self.console.setWindowTitle(t("console.title"))
         self.console.set_python_repl(self.python_repl)
 
         # ── 数学控制台（Octave / NumEngine 交互终端）────────────────────────────
         self.math_console = MathConsole(self)
+        self.math_console.setObjectName("dockMathConsole")
         self.addDockWidget(Qt.BottomDockWidgetArea, self.math_console)
         # 与 Python Console 合并为 Tab（底部共享一个停靠区）
         self.tabifyDockWidget(self.console, self.math_console)
         # 默认显示 Python Console（让 math_console 在背景 Tab）
         self.console.raise_()
 
-        # 函数探索器面板
+        # 函数探索器面板（重型面板，默认隐藏 — §5.3）
         self.function_explorer = FunctionExplorerPanel(self)
+        self.function_explorer.setObjectName("dockFunctionExplorer")
         self.addDockWidget(Qt.LeftDockWidgetArea, self.function_explorer)
-        self.function_explorer.setWindowTitle(t("function_explorer.title").upper())
+        self.function_explorer.setWindowTitle(t("function_explorer.title"))
         self.function_explorer.hide()  # 默认隐藏
 
+        # R-15：算法可视化 / AI 工具默认可见（右侧 Tab 组）
         self.algo_vis_panel = AlgoVisPanel(self)
+        self.algo_vis_panel.setObjectName("dockAlgoVis")
         self.addDockWidget(Qt.RightDockWidgetArea, self.algo_vis_panel)
-        self.algo_vis_panel.setWindowTitle(t("algo_vis.title").upper())
-        self.algo_vis_panel.hide()
+        self.algo_vis_panel.setWindowTitle(t("algo_vis.title"))
 
         self.ai_tools_panel = AIToolsPanel(self)
+        self.ai_tools_panel.setObjectName("dockAITools")
         self.addDockWidget(Qt.RightDockWidgetArea, self.ai_tools_panel)
-        self.ai_tools_panel.setWindowTitle(t("ai_tools.title").upper())
-        self.ai_tools_panel.hide()
+        self.ai_tools_panel.setWindowTitle(t("ai_tools.title"))
 
         self.tabifyDockWidget(self.algo_vis_panel, self.ai_tools_panel)
 
@@ -172,33 +179,6 @@ class UISetupMixin:
         # math_console.bridge.signals 是 BridgeSignals(QObject)，
         # plot_requested 发射一个包含 x/y/type/title 的 dict。
         self.math_console.bridge.signals.plot_requested.connect(self.handle_console_plot)
-
-    def load_stylesheet(self):
-        try:
-            from mathlab.utils.theme_manager import get_theme_colors
-
-            theme = get_theme_colors()
-
-            stylesheet_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "ui", "styles.qss")
-            with open(stylesheet_path, "r", encoding="utf-8") as f:
-                qss = f.read()
-
-            if theme["name"] != "Dark":
-                qss = qss.replace("#13131A", theme["background"])
-                qss = qss.replace("#E0E0E6", theme["foreground"])
-                qss = qss.replace("#1E1E28", theme["panel_bg"])
-                qss = qss.replace("#2A2A35", theme["panel_border"])
-                qss = qss.replace("#181822", theme["console_bg"])
-                qss = qss.replace("#323242", theme["panel_border"])
-                qss = qss.replace("#FFFFFF", theme["console_fg"])
-                qss = qss.replace("#00A67E", theme["accent"])
-                qss = qss.replace("#2A2A38", theme["panel_bg"])
-                qss = qss.replace("#3A3A4A", theme["panel_border"])
-                qss = qss.replace("#353545", theme["panel_border"])
-
-            self.setStyleSheet(qss)
-        except Exception as e:
-            logger.warning("样式表加载失败: %s", e)
 
     def _refresh_notebook_ui(self) -> None:
         # 暴力清空 UI 然后让其重新为空
@@ -279,7 +259,7 @@ class UISetupMixin:
     # ─────────────────────────────────────────────────────────────────────
     def add_dynamic_panel(self, panel_name: str, widget, icon=None):
         """允许插件添加一个新的 UI 面板到主窗口侧边栏"""
-        dock = QDockWidget(panel_name.upper(), self)
+        dock = QDockWidget(panel_name, self)
         dock.setObjectName(f"dock_dynamic_{panel_name}")
         dock.setWidget(widget)
         self.addDockWidget(Qt.RightDockWidgetArea, dock)

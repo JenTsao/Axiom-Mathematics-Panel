@@ -345,13 +345,38 @@ jobs:
             --diff
 
   # ────────────────────────────────────────────────────────────────────────
-  # Job 8: 汇总报告
+  # Job 8: UI 样式防回潮 (ui-style-guard — UI_SYSTEM_DESIGN.md §7.3)
+  # ────────────────────────────────────────────────────────────────────────
+  ui-style-guard:
+    name: UI Style Guard (S1 inline / S2 hex / S3 actions)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+        with:
+          egress-policy: audit
+
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Setup Python
+        uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b # v5.3.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Run UI style guard
+        run: |
+          echo "🔍 正在检查 UI 内联样式与未连接 QAction..."
+          python mathlab/scripts/check_ui_style.py
+
+  # ────────────────────────────────────────────────────────────────────────
+  # Job 9: 汇总报告
   # ────────────────────────────────────────────────────────────────────────
   summary:
     name: Quality Summary
     runs-on: ubuntu-24.04
     timeout-minutes: 5
-    needs: [flake8, pylint, mypy, import-check, bandit, safety, format-check]
+    needs: [flake8, pylint, mypy, import-check, bandit, safety, format-check, ui-style-guard]
     if: always()
     steps:
       - name: Generate summary
@@ -363,6 +388,7 @@ jobs:
           BANDIT_RESULT: ${{ needs.bandit.result }}
           SAFETY_RESULT: ${{ needs.safety.result }}
           FORMAT_CHECK_RESULT: ${{ needs.format-check.result }}
+          UI_STYLE_GUARD_RESULT: ${{ needs.ui-style-guard.result }}
         run: |
           {
             echo "## 📊 代码质量检查报告"
@@ -376,6 +402,7 @@ jobs:
             echo "| Bandit 安全扫描 | ${BANDIT_RESULT} |"
             echo "| Safety 依赖检查 | ${SAFETY_RESULT} |"
             echo "| Black/Isort 格式 | ${FORMAT_CHECK_RESULT} |"
+            echo "| UI 样式防回潮 | ${UI_STYLE_GUARD_RESULT} |"
             echo ""
             echo "状态说明: ✅ success = 通过, ❌ failure = 失败, ⏭️ skipped = 跳过"
           } >> "$GITHUB_STEP_SUMMARY"

@@ -1,8 +1,7 @@
 """Unit tests for mathlab.utils.theme_manager.
 
-Extracted from test_utils.py (TestThemeManager). Covers THEMES
-registry validation and get_theme_colors retrieval for light, dark,
-and sepia themes.
+THEMES 现为由 token 派生的兼容视图（UI_SYSTEM_DESIGN.md §1.7）。
+T01 改造后断言对齐新的 token 色值。
 """
 
 import pytest
@@ -31,7 +30,7 @@ class TestThemeManager:
     def test_get_theme_colors(self):
         colors = get_theme_colors("light")
         assert colors["name"] == "Light"
-        assert colors["background"] == "#ffffff"
+        assert colors["background"] == "#FFFFFF"
 
     @pytest.mark.unit
     def test_get_theme_colors_default(self):
@@ -41,10 +40,11 @@ class TestThemeManager:
     @pytest.mark.unit
     def test_dark_theme_colors(self):
         colors = get_theme_colors("dark")
-        assert colors["background"] == "#1e1e1e"
-        assert colors["foreground"] == "#d4d4d4"
+        # D-1 改造后：dark 背景切换到 Slate 色板（bg.base = #0F172A）
+        assert colors["background"] == "#0F172A"
+        assert colors["foreground"] == "#F8FAFC"
 
     @pytest.mark.unit
     def test_sepia_theme_colors(self):
         colors = get_theme_colors("sepia")
-        assert colors["background"] == "#f4ecd8"
+        assert colors["background"] == "#F4ECD8"

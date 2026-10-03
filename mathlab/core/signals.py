@@ -40,3 +40,17 @@ class AISignals(QObject):
     training_progress = Signal(int, float)
     training_finished = Signal(object)
     error_occurred = Signal(str)
+
+
+class ThemeSignals(QObject):
+    """主题变更信号（UI_SYSTEM_DESIGN.md §1.2 / M12）。
+
+    由 ``theme_manager.set_theme()`` 在样式应用**之后**发射；
+    订阅方只做「取新 token + 重绘」，不得反向调用 ``set_theme``。
+    """
+
+    theme_changed = Signal(str)
+
+
+# 模块级单例：跨模块主题订阅统一入口
+theme_signals = ThemeSignals()

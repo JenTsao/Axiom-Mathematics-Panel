@@ -389,6 +389,12 @@ class CommandsMixin:
         )  # noqa: E272,E241
 
         # ── 系统 ────────────────────────────────────────────────────────
+        # ── 撤销/重做（R-10 / §6.4：不并轨 CommandManager，仅暴露给命令面板） ──
+        undo_stack = getattr(self, "undo_stack", None)
+        if undo_stack is not None and undo_stack.enabled:
+            reg(C("undo.last", "撤销", undo_stack.undo, "编辑", "Ctrl+Z"))
+            reg(C("redo.last", "重做", undo_stack.redo, "编辑", "Ctrl+Y"))
+
         reg(
             C(
                 "sys.preferences",

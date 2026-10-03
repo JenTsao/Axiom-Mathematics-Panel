@@ -22,6 +22,10 @@ _DEFAULT_CONFIG: Dict[str, Any] = {
     "ai_api_key": "",
     "ai_base_url": "https://api.deepseek.com/v1",
     "ai_model": "deepseek-chat",
+    # R-25：画布抗锯齿开关（默认开启，偏好「图形质量」页可降级）
+    "aa_enabled": True,
+    # D-3：撤销栈启用开关（关闭时 Ctrl+Z 灰置，UndoStack 零开销）
+    "enable_undo": True,
     "sandbox": {
         "timeout": 30,
         "memory_limit_mb": 256,

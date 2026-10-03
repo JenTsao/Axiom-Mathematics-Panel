@@ -50,7 +50,8 @@
     "column_name": "名称",
     "column_value": "值",
     "rename": "重命名",
-    "delete": "删除"
+    "delete": "删除",
+    "new_name": "新名称"
   },
   "properties_panel": {
     "title": "属性",
@@ -69,7 +70,8 @@
     "show_label": "显示标签",
     "name_tab": "名称",
     "value_tab": "值",
-    "definition": "定义"
+    "definition": "定义",
+    "thickness": "线宽"
   },
   "console": {
     "title": "Python 控制台",
@@ -126,7 +128,26 @@
     "shortcut": "快捷键",
     "canvas_bg_grid": "网格",
     "canvas_bg_blank": "空白",
-    "canvas_bg_polar": "极坐标网格"
+    "canvas_bg_polar": "极坐标网格",
+    "canvas_white_paper": "画布使用白纸背景（打印友好）",
+    "enable_undo": "启用撤销/重做 (Ctrl+Z / Ctrl+Y)",
+    "accent_tooltip": "点击色块选择强调色，点击“应用”或“确定”后生效",
+    "color_scheme": "配色方案",
+    "scheme_dark": "深色",
+    "scheme_light": "浅色",
+    "scheme_system": "跟随系统",
+    "snapping": "捕捉模式",
+    "snap_grid": "捕捉到网格",
+    "snap_points": "捕捉到点",
+    "snap_off": "关闭",
+    "hardware_acceleration": "启用硬件加速",
+    "autosave_interval": "自动保存间隔",
+    "autosave_minutes": "分钟",
+    "factory_reset": "恢复出厂设置",
+    "reset_hint": "将清除全部设置与缓存数据并恢复默认配置",
+    "reset_confirm": "确定要恢复默认设置吗？此操作不可撤销。",
+    "fast": "快",
+    "slow": "慢"
   },
   "ai_tools": {
     "title": "AI 工具",
@@ -431,5 +452,23 @@
     "tool_line": "直线/线段",
     "tool_intersect": "找交点",
     "algebra_title": "代数区 (Algebra)"
+  },
+  "view": {
+    "reset_layout": "恢复默认布局"
+  },
+  "tools": {
+    "signal_lab": "信号处理实验室 (FFT)",
+    "fractal_explorer": "GPU 分形探索器"
+  },
+  "undo": {
+    "op": {
+      "add_point": "添加点",
+      "add_segment": "添加线段",
+      "add_circle": "添加圆",
+      "add_polygon": "添加多边形",
+      "move": "移动对象",
+      "delete": "删除对象",
+      "auto": "编辑操作"
+    }
   }
 }

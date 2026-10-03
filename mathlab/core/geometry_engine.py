@@ -1,3 +1,4 @@
+import json
 import logging
 import uuid
 from collections import defaultdict
@@ -110,6 +111,7 @@ class GeometryEngine(QObject):
         self.dependencies = DAG()
         self._listeners = []  # 向后兼容：旧的回调式监听器
         self._signals_blocked = False
+        self._restoring = False  # 快照恢复中标志（撤销栈守卫，见 undo_stack.py）
         self.cas_provider = None
         self.is_draft_mode = False
         self.draft_ids = []
@@ -215,6 +217,11 @@ class GeometryEngine(QObject):
     def _notify(self, event_type, data):
         """发射 Qt 信号并通知旧式监听器。"""
         if self._signals_blocked:
+            return
+
+        # 撤销栈快照恢复期间：不逐对象广播（避免中间态噪声），仅允许 scene_restored 通过。
+        # 「恢复期间不记录，但事件照发」的守卫见 UI_SYSTEM_DESIGN.md §6.3。
+        if getattr(self, "_restoring", False) and event_type != "scene_restored":
             return
 
         if event_type == "object_added" and getattr(self, "is_draft_mode", False):
@@ -667,6 +674,117 @@ class GeometryEngine(QObject):
             "objects": {obj_id: obj.serialize() for obj_id, obj in self.objects.items()},
             "name_counter": dict(self.name_counter),
         }
+
+    # ── 撤销栈支持：整场景快照（UI_SYSTEM_DESIGN.md §6.3，最小增量） ──────
+
+    def snapshot(self):
+        """导出全场景不可变快照（复用 GeometricObject.serialize()，零新协议）。
+
+        Returns:
+            GeometrySnapshot：objects（JSON 文本，保证不可变）+ DAG 边 +
+            命名计数器 + 空闲名称池。
+        """
+        from mathlab.core.undo_stack import GeometrySnapshot  # 局部导入规避循环
+
+        objects = tuple(
+            (obj_id, json.dumps(obj.serialize(), ensure_ascii=False, sort_keys=True))
+            for obj_id, obj in self.objects.items()
+        )
+        edges = tuple(
+            sorted(
+                (parent, child)
+                for parent, children in self.dependencies.graph.items()
+                for child in children
+                if parent in self.objects and child in self.objects
+            )
+        )
+        name_counters = tuple(sorted((k, v) for k, v in self.name_counter.items()))
+        free_names = tuple((k, tuple(v)) for k, v in self._free_names.items())
+        return GeometrySnapshot(objects=objects, edges=edges, name_counters=name_counters, free_names=free_names)
+
+    def restore_snapshot(self, snap):
+        """按拓扑序重建整场景（objects + DAG + 命名计数器 + 空闲名称池）。
+
+        恢复期间置 ``self._restoring = True``（抑制撤销记录器自捕获），
+        结束后发 ``scene_restored`` 事件，由 SignalsMixin 全量 resync UI。
+        """
+        import json as _json
+        from collections import deque as _deque
+
+        from mathlab.core.models import DAG, GeometricObject
+        from mathlab.core.undo_stack import GeometrySnapshot  # noqa: F401 — 类型标注用
+
+        if not isinstance(snap, GeometrySnapshot):
+            raise TypeError("restore_snapshot expects a GeometrySnapshot")
+
+        self._restoring = True
+        try:
+            self.objects.clear()
+            self._name_set.clear()
+            self._free_names = defaultdict(list, {k: list(v) for k, v in snap.free_names})
+            self.name_counter = defaultdict(int, dict(snap.name_counters))
+            self.dependencies = DAG()
+
+            # Kahn 拓扑排序：保证父节点先于子节点重建（update_coordinates 需要依赖就绪）
+            payloads = dict(snap.objects)
+            indegree = {obj_id: 0 for obj_id in payloads}
+            children_map = defaultdict(list)
+            for parent, child in snap.edges:
+                if parent in payloads and child in payloads:
+                    children_map[parent].append(child)
+                    indegree[child] += 1
+
+            queue = _deque(obj_id for obj_id, deg in indegree.items() if deg == 0)
+            topo_order = []
+            while queue:
+                obj_id = queue.popleft()
+                topo_order.append(obj_id)
+                for child in children_map.get(obj_id, ()):
+                    indegree[child] -= 1
+                    if indegree[child] == 0:
+                        queue.append(child)
+
+            # 环路兜底：理论上 DAG 不可能有环；如有遗漏节点补齐
+            if len(topo_order) < len(payloads):
+                topo_order.extend(oid for oid in payloads if oid not in set(topo_order))
+
+            # 按**快照插入序**重建对象（保证 snapshot→restore→snapshot 幂等）；
+            # 拓扑序仅用于后续坐标刷新（update_coordinates 需要依赖就绪）
+            for obj_id, payload in payloads.items():
+                obj = GeometricObject.deserialize(_json.loads(payload))
+                self.objects[obj_id] = obj
+                self._name_set.add(obj.name)
+
+            for parent, child in snap.edges:
+                if parent in self.objects and child in self.objects:
+                    try:
+                        self.dependencies.add_edge(parent, child)
+                    except ValueError:
+                        logging.getLogger(__name__).warning("快照恢复：跳过异常边 %s → %s", parent, child)
+
+            # 依赖其他节点的几何对象刷新坐标（与 deserialize_all 相同的类型清单，
+            # 按拓扑序执行避免读取脏数据）
+            for obj_id in topo_order:
+                obj = self.objects.get(obj_id)
+                if obj is not None and hasattr(obj, "update_coordinates"):
+                    if type(obj).__name__ in (
+                        "Segment",
+                        "Circle",
+                        "Polygon",
+                        "Ellipse",
+                        "Hyperbola",
+                        "Parabola",
+                        "Locus",
+                        "Line",
+                        "Ray",
+                        "Intersection",
+                        "Sphere",
+                    ):
+                        obj.update_coordinates(self)
+        finally:
+            self._restoring = False
+
+        self._notify("scene_restored", {"count": len(self.objects)})
 
     def deserialize_all(self, data):
         self.objects.clear()

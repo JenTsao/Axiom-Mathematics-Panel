@@ -45,6 +45,12 @@ class SignalsMixin:
         self.console.execute_command.connect(self.on_console_command)
         self.command_bar.command_entered.connect(self.on_command_entered)
 
+        # ── 撤销手势接线（R-10 / §6.5）────────────────────────────────────
+        # 拖拽：object_moved 连续发射 → 首次 begin_gesture；松手 → end_gesture
+        if getattr(self, "undo_stack", None) is not None and self.undo_stack.enabled:
+            self.central_widget.object_moved.connect(self.on_object_drag_moved)
+            self.central_widget.object_move_finished.connect(self.on_object_drag_finished)
+
         self.ai_tools_panel.action_requested.connect(self.execute_ai_action)
         self.ai_tools_panel.fit_requested.connect(self.on_ai_fit_requested)
         self.ai_tools_panel.cluster_requested.connect(self.on_ai_cluster_requested)
@@ -118,6 +124,63 @@ class SignalsMixin:
             self._objects_data.clear()
             self.algebra_panel.clear()
             self.central_widget.clear_canvas()
+        elif event_type == "scene_restored":
+            # 撤销/重做恢复完成：全量 resync（不信任增量 — §6.6，QA 必测）
+            self.on_scene_restored(data)
+
+    def on_scene_restored(self, data: dict) -> None:
+        """scene_restored 分发：画布 / 代数列表 / 属性面板三处联动刷新（§6.6）。"""
+        engine = getattr(self, "geometry_engine", None)
+        if engine is None:
+            return
+        self._objects_data = {obj_id: obj.serialize() for obj_id, obj in engine.objects.items()}
+        self.central_widget.resync_from_engine(engine)
+        self.algebra_panel.clear()
+        for obj_data in self._objects_data.values():
+            self.algebra_panel.add_object(obj_data)
+        # 选中对象可能已不存在
+        self.properties_panel.clear()
+
+    # ── 撤销手势边界（§6.5）────────────────────────────────────────────
+
+    def on_object_drag_moved(self, obj_id: str, x: float, y: float) -> None:
+        """拖拽中：首次移动时打开手势（整段拖拽 = 一条撤销），并同步引擎坐标。"""
+        undo_stack = getattr(self, "undo_stack", None)
+        if undo_stack is not None and undo_stack.enabled and not undo_stack.gesture_active:
+            undo_stack.begin_gesture("move")
+        if hasattr(self, "geometry_engine"):
+            self.geometry_engine.update_point(obj_id, x=x, y=y)
+
+    def on_object_drag_finished(self, obj_id: str) -> None:
+        """拖拽结束：收口手势（无差异则自动丢弃）。"""
+        undo_stack = getattr(self, "undo_stack", None)
+        if undo_stack is not None and undo_stack.enabled and undo_stack.gesture_active:
+            undo_stack.end_gesture()
+
+    def on_canvas_white_paper_changed(self, enabled: bool) -> None:
+        """D-2 白纸开关变更：画布即时刷新。"""
+        if hasattr(self, "central_widget"):
+            self.central_widget.set_white_paper(bool(enabled))
+
+    def on_undo_enabled_changed(self, enabled: bool) -> None:
+        """D-3 撤销栈开关变更：UndoStack 启停 + 菜单灰置（U-6）。"""
+        undo_stack = getattr(self, "undo_stack", None)
+        if undo_stack is not None:
+            undo_stack.set_enabled(bool(enabled))
+        can_undo = bool(enabled) and undo_stack is not None and undo_stack.depth > 0
+        if hasattr(self, "undo_action"):
+            self.undo_action.setEnabled(can_undo)
+        if hasattr(self, "redo_action"):
+            self.redo_action.setEnabled(False)
+
+    def on_object_color_changed(self, obj_id, color):
+        if hasattr(self, "geometry_engine"):
+            obj = self.geometry_engine.get_object(obj_id)
+            if obj:
+                obj.color = color
+                # 用户自选色入 object_map（§3.4：主题切换后保留用户意图）
+                self.central_widget.set_user_color(obj_id, color)
+                self._update_object_display(obj_id, obj)
 
     def on_function_added(self, func_data: dict):
         """处理函数探索器添加的函数"""
@@ -200,60 +263,49 @@ class SignalsMixin:
     # ── AI 全局交互集成 ──────────────────────────────────────────────
     def on_point_added(self, x: float, y: float) -> None:
         if hasattr(self, "geometry_engine"):
-            self.geometry_engine.add_point(x, y)
-        else:
-            obj_id = str(uuid.uuid4())
-            obj_data = {
-                "id": obj_id,
-                "name": t("geometry.new_point"),
-                "type": "Point",
-                "coordinates": {"x": x, "y": y},
-            }
-            self._add_object(obj_data)
+            self._run_as_gesture("add_point", lambda: self.geometry_engine.add_point(x, y))
 
     def on_segment_added(self, x1: float, y1: float, x2: float, y2: float) -> None:
         if hasattr(self, "geometry_engine"):
-            p1_id = self.geometry_engine.add_point(x1, y1)
-            p2_id = self.geometry_engine.add_point(x2, y2)
-            self.geometry_engine.add_segment(p1_id, p2_id)
-        else:
-            obj_id = str(uuid.uuid4())
-            obj_data = {
-                "id": obj_id,
-                "name": t("geometry.segment"),
-                "type": "Segment",
-                "coordinates": {"x1": x1, "y1": y1, "x2": x2, "y2": y2},
-            }
-            self._add_object(obj_data)
+
+            def _add():
+                p1_id = self.geometry_engine.add_point(x1, y1)
+                p2_id = self.geometry_engine.add_point(x2, y2)
+                self.geometry_engine.add_segment(p1_id, p2_id)
+
+            self._run_as_gesture("add_segment", _add)
 
     def on_circle_added(self, cx: float, cy: float, radius: float) -> None:
         if hasattr(self, "geometry_engine"):
-            c_id = self.geometry_engine.add_point(cx, cy)
-            self.geometry_engine.add_circle(c_id, radius)
-        else:
-            obj_id = str(uuid.uuid4())
-            obj_data = {
-                "id": obj_id,
-                "name": t("geometry.circle"),
-                "type": "Circle",
-                "coordinates": {"cx": cx, "cy": cy, "r": radius},
-            }
-            self._add_object(obj_data)
+
+            def _add():
+                c_id = self.geometry_engine.add_point(cx, cy)
+                self.geometry_engine.add_circle(c_id, radius)
+
+            self._run_as_gesture("add_circle", _add)
 
     def on_polygon_added(self, points: list) -> None:
         if hasattr(self, "geometry_engine"):
-            p_ids = [self.geometry_engine.add_point(pt[0], pt[1]) for pt in points]
-            self.geometry_engine.add_polygon(p_ids)
-        else:
-            obj_id = str(uuid.uuid4())
-            obj_data = {
-                "id": obj_id,
-                "name": t("geometry.polygon"),
-                "type": "Polygon",
-                "coordinates": {"points": list(points)},
-                "points": list(points),
-            }
-            self._add_object(obj_data)
+
+            def _add():
+                p_ids = [self.geometry_engine.add_point(pt[0], pt[1]) for pt in points]
+                self.geometry_engine.add_polygon(p_ids)
+
+            self._run_as_gesture("add_polygon", _add)
+
+    def _run_as_gesture(self, label: str, fn) -> None:
+        """以撤销手势包裹一次引擎调用（§6.5：工具栏/画布新增路径）。"""
+        undo_stack = getattr(self, "undo_stack", None)
+        if undo_stack is None or not undo_stack.enabled:
+            fn()
+            return
+        undo_stack.begin_gesture(label)
+        try:
+            fn()
+        except Exception:
+            undo_stack.cancel_gesture()
+            raise
+        undo_stack.end_gesture()
 
     def on_algebra_item_selected(self, obj_id: str) -> None:
         self.central_widget.select_object(obj_id)
@@ -263,13 +315,6 @@ class SignalsMixin:
                 self.properties_panel.set_object(obj.serialize())
         elif obj_id in self._objects_data:
             self.properties_panel.set_object(self._objects_data[obj_id])
-
-    def on_object_color_changed(self, obj_id, color):
-        if hasattr(self, "geometry_engine"):
-            obj = self.geometry_engine.get_object(obj_id)
-            if obj:
-                obj.color = color
-                self._update_object_display(obj_id, obj)
 
     def on_object_opacity_changed(self, obj_id, opacity):
         if hasattr(self, "geometry_engine"):
@@ -300,7 +345,8 @@ class SignalsMixin:
 
     def on_object_deleted(self, obj_id: str) -> None:
         if hasattr(self, "geometry_engine"):
-            self.geometry_engine.remove_object(obj_id)
+            # 级联删除整棵依赖子树 → 一次手势 = 一条撤销（U-2）
+            self._run_as_gesture("delete", lambda: self.geometry_engine.remove_object(obj_id))
         else:
             self.central_widget.remove_object(obj_id)
             self.algebra_panel.remove_object(obj_id)
@@ -311,9 +357,23 @@ class SignalsMixin:
             return
 
         selected_items = self.central_widget.scene().selectedItems()
-        for item in selected_items:
-            if hasattr(item, "obj_id"):
-                self.on_object_deleted(item.obj_id)
+        targets = [item.obj_id for item in selected_items if hasattr(item, "obj_id")]
+        if not targets:
+            return
+
+        undo_stack = getattr(self, "undo_stack", None)
+        use_gesture = undo_stack is not None and undo_stack.enabled
+        if use_gesture:
+            undo_stack.begin_gesture("delete")
+        try:
+            for obj_id in targets:
+                self.on_object_deleted(obj_id)
+        except Exception:
+            if use_gesture:
+                undo_stack.cancel_gesture()
+            raise
+        if use_gesture:
+            undo_stack.end_gesture()
 
     def on_object_renamed(self, obj_id: str, new_name: str) -> None:
         if hasattr(self, "geometry_engine"):

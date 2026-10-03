@@ -37,6 +37,11 @@ from PySide6.QtWidgets import (
 
 from mathlab.core.geometry_helpers import MagnetSnapper
 from mathlab.core.smart_guides import SmartGuideManager
+from mathlab.utils.config_manager import get_config
+from mathlab.utils.theme_manager import get_current_theme
+
+from .canvas_theme import TYPE_TO_KIND, CanvasPalette, resolve_canvas_palette
+from .session_state import get_white_paper
 
 # 实例化吸附引擎 (全局复用)
 snapper = MagnetSnapper(snap_threshold_pixels=10)
@@ -51,20 +56,29 @@ except ImportError:
     SharedSvgRendererCache = None
     is_latex_rendering_available = lambda: False
 
-# ── 网格画笔缓存 ─────────────────────────────────────────────────────────────
+# ── 网格画笔缓存（theme-keyed：按 key 失效，不用 cache_clear — §3.2） ────────
 # drawBackground 在滚动/缩放/拖动时高频触发，进程级复用画笔避免重复构造 QPen/QColor
 
 
-@lru_cache(maxsize=1)
-def _get_grid_pen() -> QPen:
-    pen = QPen(QColor("#d3e4fe"), 0.5)
+@lru_cache(maxsize=8)  # 3 主题 × 白纸开关 = 最多 6 个 key
+def _get_grid_pen(theme_name: str, white_paper: bool) -> QPen:
+    pal = resolve_canvas_palette(theme_name, white_paper)
+    pen = QPen(QColor(pal.grid), 0.5)
     pen.setStyle(Qt.DashLine)
     return pen
 
 
-@lru_cache(maxsize=1)
-def _get_origin_pen() -> QPen:
-    return QPen(QColor("#737686"), 1)
+@lru_cache(maxsize=8)
+def _get_origin_pen(theme_name: str, white_paper: bool) -> QPen:
+    pal = resolve_canvas_palette(theme_name, white_paper)
+    return QPen(QColor(pal.axis), 1)
+
+
+@lru_cache(maxsize=8)
+def _get_label_color(theme_name: str, white_paper: bool) -> QColor:
+    """MathGraphicsItem 降级文本色（原 #0b1c30 写死 → fg.primary）。"""
+    pal = resolve_canvas_palette(theme_name, white_paper)
+    return QColor(pal.label)
 
 
 class MathGraphicsItem(QGraphicsSvgItem):
@@ -116,16 +130,26 @@ class MathGraphicsItem(QGraphicsSvgItem):
         self._create_fallback_text()
 
     def _create_fallback_text(self):
-        """创建降级文本项"""
+        """创建降级文本项（颜色主题化：fg.primary，随主题刷新）"""
         if self._fallback_item is None:
             self._fallback_item = QGraphicsTextItem(self)
             self._fallback_item.setFont(QFont("Arial", 12, QFont.Bold))
-            self._fallback_item.setDefaultTextColor(QColor("#0b1c30"))
+
+        # 主题感知文本色：默认取当前主题 token；主题切换后由宿主画布
+        # 通过 set_fallback_color() 下发新色（见 GeometryCanvas._on_theme_changed）。
+        from mathlab.utils.theme_tokens import get_tokens
+
+        self._fallback_item.setDefaultTextColor(QColor(get_tokens()["fg.primary"]))
 
         self._fallback_item.setPlainText(self._text)
         self._fallback_item.setVisible(True)
         # 隐藏 SVG 项
         self.setVisible(False)
+
+    def set_fallback_color(self, color: QColor):
+        """主题切换时由画布下发新的降级文本色。"""
+        if self._fallback_item is not None:
+            self._fallback_item.setDefaultTextColor(color)
 
     def set_text(self, new_text: str):
         """更新显示文本"""
@@ -215,6 +239,10 @@ class GeometryPointItem(QGraphicsEllipseItem):
         if manager:
             manager.clear()
 
+        # 撤销栈手势边界（§6.5）：一次拖拽 = 一条撤销
+        if hasattr(self.canvas, "object_move_finished"):
+            self.canvas.object_move_finished.emit(self.obj_id)
+
     def itemChange(self, change, value):
         # 拦截拖拽时产生的新坐标分配
         if change == QGraphicsItem.GraphicsItemChange.ItemPositionChange and self.scene():
@@ -254,6 +282,8 @@ class GeometryCanvas(QGraphicsView):
     circle_added = Signal(str, float)  # 保留，供外部兼容使用
     object_selected = Signal(str)
     object_moved = Signal(str, float, float)
+    # 拖拽结束信号（撤销栈手势边界 — UI_SYSTEM_DESIGN.md §6.5，一次拖拽 = 一条撤销）
+    object_move_finished = Signal(str)
 
     # BUG2 修复：新增坐标信号，替代 add_segment/circle/polygon 中的直接绘制
     segment_added_coords = Signal(float, float, float, float)  # x1, y1, x2, y2
@@ -286,10 +316,16 @@ class GeometryCanvas(QGraphicsView):
 
         self.setResizeAnchor(QGraphicsView.AnchorUnderMouse)
         # 性能优化：禁用不必要的渲染更新
-        self.setOptimizationFlag(QGraphicsView.DontAdjustForAntialiasing, True)
+        # R-25：抗锯齿默认开启，由偏好 aa_enabled 控制（关闭时启用 DontAdjustForAntialiasing）
+        self.setOptimizationFlag(QGraphicsView.DontAdjustForAntialiasing, not get_config("aa_enabled", True))
         self.setViewportUpdateMode(QGraphicsView.MinimalViewportUpdate)
 
-        self.scene_obj.setBackgroundBrush(QColor("#ffffff"))
+        # ── 画布主题化（§3，D-2）────────────────────────────────────────
+        self._theme_name = get_current_theme()
+        self._white_paper = get_white_paper()
+        self._palette: CanvasPalette = resolve_canvas_palette(self._theme_name, self._white_paper)
+
+        self.scene_obj.setBackgroundBrush(QColor(self._palette.paper))
         self.scene_obj.setSceneRect(-500, -500, 1000, 1000)
 
         self.current_tool = "select"
@@ -333,6 +369,122 @@ class GeometryCanvas(QGraphicsView):
         self.active_bubbles = []  # 活跃的空间气泡
         self.analysis_items = []  # 临时微积分分析图形（阴影、切线等）
 
+        # ── 主题变更订阅（§3.3）：set_theme() 发射 theme_changed → 全量重刷 ──
+        from mathlab.core.signals import theme_signals
+
+        theme_signals.theme_changed.connect(self._on_theme_changed)
+
+    # ==================================================================
+    # 画布主题化（UI_SYSTEM_DESIGN.md §3）
+    # ==================================================================
+
+    def _label_color(self) -> QColor:
+        """降级文本色（跟随主题）。"""
+        return _get_label_color(self._theme_name, self._white_paper)
+
+    def _kind_color(self, kind: str, obj_id: str | None = None) -> QColor:
+        """统一取色入口：user_color（用户意图优先）> 当前主题 token。"""
+        if obj_id is not None:
+            info = self.object_map.get(obj_id, {})
+            user = info.get("user_color")
+            if user:
+                return QColor(user)
+        return QColor(getattr(self._palette, kind, self._palette.point))
+
+    def _pen(
+        self, kind: str, width: float, dash: bool = False, alpha: float | None = None, obj_id: str | None = None
+    ) -> QPen:
+        """构造几何对象画笔（色值全部来自 CanvasPalette / 用户色）。"""
+        color = self._kind_color(kind, obj_id)
+        if alpha is not None:
+            color.setAlphaF(alpha)
+        style = Qt.DashLine if dash else Qt.SolidLine
+        return QPen(color, width, style)
+
+    def _brush(self, kind: str, alpha: float | None = None, obj_id: str | None = None) -> QBrush:
+        """构造几何对象画刷。"""
+        color = self._kind_color(kind, obj_id)
+        if alpha is not None:
+            color.setAlphaF(alpha)
+        return QBrush(color)
+
+    def _on_theme_changed(self, theme_name: str) -> None:
+        """主题切换：清缓存语义 = 换 key；重取调色板 → 全量重刷 → 强制重绘。"""
+        self._theme_name = theme_name
+        self._white_paper = get_white_paper()
+        self._palette = resolve_canvas_palette(theme_name, self._white_paper)
+        self.scene_obj.setBackgroundBrush(QColor(self._palette.paper))
+        self._refresh_all_object_brushes()
+        self.scene_obj.update(self.scene_obj.sceneRect())  # 强制 drawBackground 重跑
+        self.viewport().update()
+
+    def set_white_paper(self, enabled: bool) -> None:
+        """白纸开关变更（D-2）：刷新调色板与背景。"""
+        self._white_paper = bool(enabled)
+        self._palette = resolve_canvas_palette(self._theme_name, self._white_paper)
+        self.scene_obj.setBackgroundBrush(QColor(self._palette.paper))
+        self._refresh_all_object_brushes()
+        self.scene_obj.invalidate(QGraphicsScene.AllLayers)
+        self.viewport().update()
+
+    def set_user_color(self, obj_id: str, color: str | None) -> None:
+        """记录用户自选色（properties_panel color_changed）。
+
+        user_color 存入 object_map，主题切换后保留（§3.4 用户意图优先级最高）。
+        """
+        if obj_id in self.object_map:
+            self.object_map[obj_id]["user_color"] = color
+            info = self.object_map[obj_id]
+            kind = TYPE_TO_KIND.get(info.get("type", ""))
+            if kind:
+                stroke = info.get("stroke", 2.0)
+                pen = self._pen(kind, stroke, obj_id=obj_id if color else None)
+                for key in ("point", "segment", "circle", "polygon", "curve"):
+                    if key in info:
+                        info[key].setPen(pen)
+
+    def _refresh_all_object_brushes(self) -> None:
+        """主题切换后全量重刷 object_map 中所有对象的画笔/画刷（§3.4）。
+
+        user_color 非空时 _pen/_brush 已自动让位给用户色。
+        """
+        for obj_id, info in self.object_map.items():
+            kind = TYPE_TO_KIND.get(info.get("type", ""))
+            if kind is None:
+                continue
+            is_draft = info.get("is_draft", False)
+            stroke = info.get("stroke", 2.0)
+            if is_draft:
+                pen = self._pen("selection", stroke, dash=True, obj_id=obj_id)
+                brush = self._brush("selection", alpha=0.39, obj_id=obj_id)
+            elif kind == "polygon":
+                pen = self._pen(kind, stroke, obj_id=obj_id)
+                brush = self._brush(kind, alpha=0.25, obj_id=obj_id)
+            elif kind == "point":
+                pen = self._pen(kind, 1, obj_id=obj_id)
+                brush = self._brush(kind, obj_id=obj_id)
+            else:
+                pen = self._pen(kind, stroke, obj_id=obj_id)
+                brush = QBrush(Qt.NoBrush)
+            for key in ("point", "segment", "circle", "polygon", "curve"):
+                if key in info:
+                    info[key].setPen(pen)
+                    if key in ("point", "polygon"):
+                        info[key].setBrush(brush)
+            # 同步降级文本色
+            text_item = info.get("text")
+            if isinstance(text_item, MathGraphicsItem):
+                text_item.set_fallback_color(_get_label_color(self._theme_name, self._white_paper))
+
+    def resync_from_engine(self, engine) -> None:
+        """撤销恢复后全量重同步：清 object_map → 遍历 engine.objects → 重绘。
+
+        这是撤销后画布一致性的唯一保证点（§6.6，QA 必测）。
+        """
+        self.clear_canvas()
+        for obj_id, obj in engine.objects.items():
+            self.draw_object(obj_id, obj.serialize())
+
     def spawn_spatial_bubble(self, obj_id: str, text: str):
         """在目标元素旁生成讲解气泡"""
         if obj_id not in self.object_map:
@@ -364,7 +516,10 @@ class GeometryCanvas(QGraphicsView):
         """重写背景绘制：使用单次 Painter 调用绘制网格，替代 404 个 QGraphicsLineItem"""
         super().drawBackground(painter, rect)
 
-        grid_pen = _get_grid_pen()
+        # 纸面色跟随主题（D-2；原 #ffffff 写死已删）
+        self.scene_obj.setBackgroundBrush(QColor(self._palette.paper))
+
+        grid_pen = _get_grid_pen(self._theme_name, self._white_paper)
         painter.setPen(grid_pen)
 
         # 计算可见区域范围内的网格线（避免绘制不可见区域）
@@ -389,7 +544,7 @@ class GeometryCanvas(QGraphicsView):
         painter.drawPath(path_h)
 
         # 坐标轴
-        painter.setPen(_get_origin_pen())
+        painter.setPen(_get_origin_pen(self._theme_name, self._white_paper))
         painter.drawLine(QLineF(0, top, 0, bottom))
         painter.drawLine(QLineF(left, 0, right, 0))
 
@@ -653,7 +808,7 @@ class GeometryCanvas(QGraphicsView):
             self.scene_obj.removeItem(self.preview_item)
 
         self.preview_item = QGraphicsLineItem(p1[0], p1[1], scene_pos.x(), scene_pos.y())
-        self.preview_item.setPen(QPen(QColor("#4b41e1"), 2, Qt.DashLine))
+        self.preview_item.setPen(self._pen("segment", 2, dash=True))
         self.scene_obj.addItem(self.preview_item)
 
     def update_circle_preview(self, scene_pos):
@@ -669,7 +824,7 @@ class GeometryCanvas(QGraphicsView):
             self.scene_obj.removeItem(self.preview_item)
 
         self.preview_item = QGraphicsEllipseItem(cx - radius, cy - radius, radius * 2, radius * 2)
-        self.preview_item.setPen(QPen(QColor("#006058"), 2, Qt.DashLine))
+        self.preview_item.setPen(self._pen("circle", 2, dash=True))
         self.preview_item.setBrush(QBrush(Qt.NoBrush))
         self.scene_obj.addItem(self.preview_item)
 
@@ -688,8 +843,8 @@ class GeometryCanvas(QGraphicsView):
             polygon.append(QPointF(scene_pos.x(), scene_pos.y()))
 
         self.preview_item = QGraphicsPolygonItem(polygon)
-        self.preview_item.setPen(QPen(QColor("#9333ea"), 2, Qt.DashLine))
-        self.preview_item.setBrush(QBrush(QColor("#9333ea"), Qt.Dense4Pattern))
+        self.preview_item.setPen(self._pen("polygon", 2, dash=True))
+        self.preview_item.setBrush(self._brush("polygon", alpha=0.25))
         self.scene_obj.addItem(self.preview_item)
 
     # ------------------------------------------------------------------
@@ -715,6 +870,16 @@ class GeometryCanvas(QGraphicsView):
     def draw_object(self, obj_id, obj_data):
         obj_type = obj_data.get("type")
         is_draft = obj_data.get("is_draft", False)
+        # 统一取色（§3.4）：kind → CanvasPalette 字段；草稿态用 selection + alpha
+        kind = TYPE_TO_KIND.get(obj_type)
+        if kind is None and obj_type not in (None, ""):
+            kind = "point"  # 未知类型的兜底色
+
+        def _entry(**items):
+            """构造 object_map 条目：记录类型/草稿/线宽/用户色（主题切换重刷依据）。"""
+            entry = {"type": obj_type, "is_draft": is_draft, "stroke": obj_data.get("stroke", 2.0), "user_color": None}
+            entry.update(items)
+            return entry
 
         if obj_type == "Point":
             x = obj_data["coordinates"].get("x", 0)
@@ -725,12 +890,12 @@ class GeometryCanvas(QGraphicsView):
             point_item.setPos(x, y)
 
             if is_draft:
-                point_item.setBrush(QBrush(QColor(0, 120, 215, 100)))
-                point_item.setPen(QPen(QColor(0, 120, 215), 1, Qt.DashLine))
+                point_item.setBrush(self._brush("selection", alpha=0.39))
+                point_item.setPen(self._pen("selection", 1, dash=True))
                 point_item.setOpacity(0.6)
             else:
-                point_item.setBrush(QBrush(QColor("#004ac6")))
-                point_item.setPen(QPen(QColor("#004ac6"), 1))
+                point_item.setBrush(self._brush(kind, obj_id=obj_id))
+                point_item.setPen(self._pen(kind, 1, obj_id=obj_id))
             point_item.setZValue(10)
 
             # 使用 MathGraphicsItem 替代 QGraphicsTextItem，支持 LaTeX 渲染
@@ -742,7 +907,7 @@ class GeometryCanvas(QGraphicsView):
             self.scene_obj.addItem(text_item)
 
             self._point_item_set.add(point_item)
-            self.object_map[obj_id] = {"point": point_item, "text": text_item}
+            self.object_map[obj_id] = _entry(point=point_item, text=text_item)
 
         elif obj_type == "Segment":
             x1 = obj_data["coordinates"].get("x1", 0)
@@ -753,14 +918,14 @@ class GeometryCanvas(QGraphicsView):
             segment_item = QGraphicsLineItem(x1, y1, x2, y2)
 
             if is_draft:
-                segment_item.setPen(QPen(QColor(0, 120, 215), 2.0, Qt.DashLine))
+                segment_item.setPen(self._pen("selection", 2.0, dash=True))
                 segment_item.setOpacity(0.6)
             else:
-                segment_item.setPen(QPen(QColor("#4b41e1"), 2))
+                segment_item.setPen(self._pen(kind, obj_data.get("stroke", 2.0), obj_id=obj_id))
             segment_item.setFlags(QGraphicsItem.ItemIsSelectable)
 
             self.scene_obj.addItem(segment_item)
-            self.object_map[obj_id] = {"segment": segment_item}
+            self.object_map[obj_id] = _entry(segment=segment_item)
 
         elif obj_type == "Circle":
             cx = obj_data["coordinates"].get("cx", 0)
@@ -770,15 +935,15 @@ class GeometryCanvas(QGraphicsView):
             circle_item = QGraphicsEllipseItem(cx - r, cy - r, r * 2, r * 2)
 
             if is_draft:
-                circle_item.setPen(QPen(QColor(0, 120, 215), 2.0, Qt.DashLine))
+                circle_item.setPen(self._pen("selection", 2.0, dash=True))
                 circle_item.setOpacity(0.6)
             else:
-                circle_item.setPen(QPen(QColor("#006058"), 2))
+                circle_item.setPen(self._pen(kind, obj_data.get("stroke", 2.0), obj_id=obj_id))
             circle_item.setBrush(QBrush(Qt.NoBrush))
             circle_item.setFlags(QGraphicsItem.ItemIsSelectable)
 
             self.scene_obj.addItem(circle_item)
-            self.object_map[obj_id] = {"circle": circle_item}
+            self.object_map[obj_id] = _entry(circle=circle_item)
 
         elif obj_type == "Polygon":
             points = obj_data.get("points", [])
@@ -791,18 +956,18 @@ class GeometryCanvas(QGraphicsView):
             polygon_item.setPolygon(polygon)
 
             if is_draft:
-                polygon_item.setPen(QPen(QColor(0, 120, 215), 2.0, Qt.DashLine))
-                polygon_item.setBrush(QBrush(QColor(0, 120, 215, 50)))
+                polygon_item.setPen(self._pen("selection", 2.0, dash=True))
+                polygon_item.setBrush(self._brush("selection", alpha=0.2))
                 polygon_item.setOpacity(0.6)
             else:
-                polygon_item.setPen(QPen(QColor("#9333ea"), 2))
-                polygon_item.setBrush(QBrush(QColor("#9333ea"), Qt.Dense4Pattern))
+                polygon_item.setPen(self._pen(kind, obj_data.get("stroke", 2.0), obj_id=obj_id))
+                polygon_item.setBrush(self._brush(kind, alpha=0.25, obj_id=obj_id))
             polygon_item.setFlags(QGraphicsItem.ItemIsSelectable)
 
             self.scene_obj.addItem(polygon_item)
-            self.object_map[obj_id] = {"polygon": polygon_item}
+            self.object_map[obj_id] = _entry(polygon=polygon_item)
 
-        # 新增：圆锥曲线和函数绘图
+        # 圆锥曲线与函数绘图
         elif obj_type in [
             "Ellipse",
             "Hyperbola",
@@ -825,31 +990,20 @@ class GeometryCanvas(QGraphicsView):
                 for point in points[1:]:
                     path.lineTo(QPointF(point[0], point[1]))
 
-            # 根据类型设置不同颜色
-            color_map = {
-                "Ellipse": QColor("#ff6b00"),
-                "Hyperbola": QColor("#d90429"),
-                "Parabola": QColor("#7209b7"),
-                "ConicSection": QColor("#f72585"),
-                "FunctionPlot": QColor("#4cc9f0"),
-                "ImplicitPlot": QColor("#4361ee"),
-                "PolarPlot": QColor("#3a0ca3"),
-                "Locus": QColor("#f72585"),
-            }
-            color = color_map.get(obj_type, QColor("#004ac6"))
-
             if is_draft:
                 curve_item = self.scene_obj.addPath(
                     path,
-                    QPen(QColor(0, 120, 215), 2.0, Qt.DashLine),
+                    self._pen("selection", 2.0, dash=True),
                     QBrush(Qt.NoBrush),
                 )
                 curve_item.setOpacity(0.6)
             else:
-                curve_item = self.scene_obj.addPath(path, QPen(color, 2), QBrush(Qt.NoBrush))
+                curve_item = self.scene_obj.addPath(
+                    path, self._pen(kind, obj_data.get("stroke", 2.0), obj_id=obj_id), QBrush(Qt.NoBrush)
+                )
             curve_item.setFlags(QGraphicsItem.ItemIsSelectable)
 
-            self.object_map[obj_id] = {"curve": curve_item}
+            self.object_map[obj_id] = _entry(curve=curve_item)
             self.curve_items[obj_id] = curve_item
 
     def update_object(self, obj_id, obj_data):
@@ -860,6 +1014,10 @@ class GeometryCanvas(QGraphicsView):
         obj_type = obj_data.get("type")
         is_draft = obj_data.get("is_draft", False)
         obj_info = self.object_map[obj_id]
+        obj_info["is_draft"] = is_draft
+        if "stroke" in obj_data:
+            obj_info["stroke"] = obj_data["stroke"]
+        kind = TYPE_TO_KIND.get(obj_type, "point")
 
         if obj_type == "Point":
             x = obj_data["coordinates"].get("x", 0)
@@ -867,12 +1025,12 @@ class GeometryCanvas(QGraphicsView):
 
             obj_info["point"].setPos(x, y)
             if is_draft:
-                obj_info["point"].setBrush(QBrush(QColor(0, 120, 215, 100)))
-                obj_info["point"].setPen(QPen(QColor(0, 120, 215), 1, Qt.DashLine))
+                obj_info["point"].setBrush(self._brush("selection", alpha=0.39))
+                obj_info["point"].setPen(self._pen("selection", 1, dash=True))
                 obj_info["point"].setOpacity(0.6)
             else:
-                obj_info["point"].setBrush(QBrush(QColor("#004ac6")))
-                obj_info["point"].setPen(QPen(QColor("#004ac6"), 1))
+                obj_info["point"].setBrush(self._brush(kind, obj_id=obj_id))
+                obj_info["point"].setPen(self._pen(kind, 1, obj_id=obj_id))
                 obj_info["point"].setOpacity(1.0)
 
             # [P0修复 Bug3] 同步更新关联的文本图元内容
@@ -894,10 +1052,10 @@ class GeometryCanvas(QGraphicsView):
 
             obj_info["segment"].setLine(x1, y1, x2, y2)
             if is_draft:
-                obj_info["segment"].setPen(QPen(QColor(0, 120, 215), 2.0, Qt.DashLine))
+                obj_info["segment"].setPen(self._pen("selection", 2.0, dash=True))
                 obj_info["segment"].setOpacity(0.6)
             else:
-                obj_info["segment"].setPen(QPen(QColor("#4b41e1"), 2))
+                obj_info["segment"].setPen(self._pen(kind, obj_info.get("stroke", 2.0), obj_id=obj_id))
                 obj_info["segment"].setOpacity(1.0)
 
         elif obj_type == "Circle":
@@ -907,10 +1065,10 @@ class GeometryCanvas(QGraphicsView):
 
             obj_info["circle"].setRect(cx - r, cy - r, r * 2, r * 2)
             if is_draft:
-                obj_info["circle"].setPen(QPen(QColor(0, 120, 215), 2.0, Qt.DashLine))
+                obj_info["circle"].setPen(self._pen("selection", 2.0, dash=True))
                 obj_info["circle"].setOpacity(0.6)
             else:
-                obj_info["circle"].setPen(QPen(QColor("#006058"), 2))
+                obj_info["circle"].setPen(self._pen(kind, obj_info.get("stroke", 2.0), obj_id=obj_id))
                 obj_info["circle"].setOpacity(1.0)
 
         elif obj_type == "Polygon":
@@ -920,15 +1078,15 @@ class GeometryCanvas(QGraphicsView):
                 polygon.append(QPointF(point[0], point[1]))
             obj_info["polygon"].setPolygon(polygon)
             if is_draft:
-                obj_info["polygon"].setPen(QPen(QColor(0, 120, 215), 2.0, Qt.DashLine))
-                obj_info["polygon"].setBrush(QBrush(QColor(0, 120, 215, 50)))
+                obj_info["polygon"].setPen(self._pen("selection", 2.0, dash=True))
+                obj_info["polygon"].setBrush(self._brush("selection", alpha=0.2))
                 obj_info["polygon"].setOpacity(0.6)
             else:
-                obj_info["polygon"].setPen(QPen(QColor("#9333ea"), 2))
-                obj_info["polygon"].setBrush(QBrush(QColor("#9333ea"), Qt.Dense4Pattern))
+                obj_info["polygon"].setPen(self._pen(kind, obj_info.get("stroke", 2.0), obj_id=obj_id))
+                obj_info["polygon"].setBrush(self._brush(kind, alpha=0.25, obj_id=obj_id))
                 obj_info["polygon"].setOpacity(1.0)
 
-        # 新增：更新曲线对象
+        # 更新曲线对象
         elif obj_type in [
             "Ellipse",
             "Hyperbola",
@@ -950,8 +1108,10 @@ class GeometryCanvas(QGraphicsView):
             point_item = obj_info.get("point")
             if point_item:
                 self._point_item_set.discard(point_item)
+            # 仅移除图形项（object_map 中还存有 type/stroke/user_color 等元数据键）
             for item in obj_info.values():
-                self.scene_obj.removeItem(item)
+                if isinstance(item, QGraphicsItem):
+                    self.scene_obj.removeItem(item)
             del self.object_map[obj_id]
             # 如果是曲线对象，也从 curve_items 中删除
             if obj_id in self.curve_items:
@@ -983,7 +1143,7 @@ class GeometryCanvas(QGraphicsView):
             if obj_id in self.object_map:
                 obj_info = self.object_map[obj_id]
                 for key, item in obj_info.items():
-                    if key != "text":
+                    if key != "text" and isinstance(item, QGraphicsItem):
                         items_to_highlight.append(item)
 
         if not items_to_highlight:
@@ -1030,12 +1190,14 @@ class GeometryCanvas(QGraphicsView):
 
         if obj_id in self.object_map:
             for item in self.object_map[obj_id].values():
-                item.setSelected(True)
+                if isinstance(item, QGraphicsItem):
+                    item.setSelected(True)
 
     def focus_on_object(self, obj_id):
         if obj_id in self.object_map:
-            first_item = list(self.object_map[obj_id].values())[0]
-            self.centerOn(first_item.sceneBoundingRect().center())
+            items = [v for v in self.object_map[obj_id].values() if isinstance(v, QGraphicsItem)]
+            if items:
+                self.centerOn(items[0].sceneBoundingRect().center())
 
     # ------------------------------------------------------------------
     # 混合渲染优化：降级渲染与防抖机制

@@ -50,7 +50,8 @@
     "column_name": "Name",
     "column_value": "Value",
     "rename": "Rename",
-    "delete": "Delete"
+    "delete": "Delete",
+    "new_name": "New Name"
   },
   "properties_panel": {
     "title": "Properties",
@@ -69,7 +70,8 @@
     "show_label": "Show Label",
     "name_tab": "Name",
     "value_tab": "Value",
-    "definition": "DEFINITION"
+    "definition": "DEFINITION",
+    "thickness": "Line Width"
   },
   "console": {
     "title": "Python Console",
@@ -126,7 +128,26 @@
     "shortcut": "Shortcut",
     "canvas_bg_grid": "Grid",
     "canvas_bg_blank": "Blank",
-    "canvas_bg_polar": "Polar Grid"
+    "canvas_bg_polar": "Polar Grid",
+    "canvas_white_paper": "Use white paper canvas background",
+    "enable_undo": "Enable undo/redo (Ctrl+Z / Ctrl+Y)",
+    "accent_tooltip": "Click a swatch to pick the accent color; takes effect after Apply or OK.",
+    "color_scheme": "Color Scheme",
+    "scheme_dark": "Dark",
+    "scheme_light": "Light",
+    "scheme_system": "Follow System",
+    "snapping": "Snapping",
+    "snap_grid": "Snap to Grid",
+    "snap_points": "Snap to Points",
+    "snap_off": "Off",
+    "hardware_acceleration": "Enable hardware acceleration",
+    "autosave_interval": "Autosave interval",
+    "autosave_minutes": "minutes",
+    "factory_reset": "Factory Reset",
+    "reset_hint": "This will clear all settings and cached data, restoring defaults.",
+    "reset_confirm": "Reset all settings to defaults? This cannot be undone.",
+    "fast": "Fast",
+    "slow": "Slow"
   },
   "ai_tools": {
     "title": "AI Tools",
@@ -428,6 +449,26 @@
     "backend_info": "Backend: NumPy / SciPy / NumEngine &nbsp;·&nbsp; Syntax: MATLAB/Octave Compatible<br>",
     "hint1": "Hint: Enter <code style=\"color:{0};\">A = [1 2; 3 4]</code> to build matrix, ",
     "hint2": "<code style=\"color:{0};\">eig(A)</code> for eigenvalues, ↑↓ to browse history",
-    "reset_success": "✓ Workspace reset"
+    "reset_success": "✓ Workspace reset",
+    "workspace": "Workspace",
+    "vars": "vars"
+  },
+  "view": {
+    "reset_layout": "Reset Default Layout"
+  },
+  "tools": {
+    "signal_lab": "Signal Processing Lab (FFT)",
+    "fractal_explorer": "GPU Fractal Explorer"
+  },
+  "undo": {
+    "op": {
+      "add_point": "Add point",
+      "add_segment": "Add segment",
+      "add_circle": "Add circle",
+      "add_polygon": "Add polygon",
+      "move": "Move object",
+      "delete": "Delete object",
+      "auto": "Edit operation"
+    }
   }
 }

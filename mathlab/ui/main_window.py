@@ -23,8 +23,10 @@ from mathlab.core.ipc_server import JupyterIPCServer
 from mathlab.core.plugin_manager import PluginManager
 from mathlab.core.python_repl import PythonREPL
 from mathlab.core.sandbox import SandboxManager
+from mathlab.core.undo_stack import UndoStack
 from mathlab.data.project import ProjectManager
 from mathlab.ui.omni_bar import OmniBar
+from mathlab.ui.session_state import restore_session, save_session
 
 # ── JupyterLab 嵌入组件（软依赖：WebEngine 不存在时降级为占位面板） ──────────
 try:
@@ -68,7 +70,8 @@ class MainWindow(
     def __init__(self):
         super().__init__()
         self.setWindowTitle(t("main_window.title"))
-        self.setGeometry(100, 100, 1200, 800)
+        # 窗口几何由 session_state 恢复 / 默认布局给出（R-09：删除 1200×800 硬编码）
+        self.resize(1200, 800)
 
         self._objects_data: dict = {}
         self.current_function_id = None
@@ -100,7 +103,9 @@ class MainWindow(
         self.setup_toolbar()
         self.setup_docks()
 
-        self.load_stylesheet()
+        # 会话恢复（R-09）：几何 / Dock 布局 / 末选 Tab；无持久化或 schema
+        # 不符时回落默认布局（含 Tab 序 + 面板可见性）
+        restore_session(self)
 
         self.current_project = None
 
@@ -161,6 +166,11 @@ class MainWindow(
         self.algo_animator = AlgoAnimator()
         self.project_manager = ProjectManager()
         self.sandbox_manager = SandboxManager()
+
+        # 撤销栈（R-10 / D-3）：订阅引擎事件，同样只在唯一实例化点创建
+        from mathlab.utils.config_manager import get_config
+
+        self.undo_stack = UndoStack(self.geometry_engine, enabled=bool(get_config("enable_undo", True)))
 
         # 将 ai_manager 注入给代码编辑器
         from mathlab.ui.code_editor import AutocompleteTextEdit
@@ -236,7 +246,13 @@ class MainWindow(
             self.omni_bar.dismiss()
 
     def closeEvent(self, event):
-        """在窗口关闭时卸载所有插件，释放资源"""
+        """在窗口关闭时保存会话、卸载所有插件，释放资源"""
+        # 会话保存放在最前（快、无副作用 — §5.4）
+        try:
+            save_session(self)
+        except Exception as e:
+            logger.warning("关闭时保存会话失败: %s", e)
+
         if hasattr(self, "autosaver"):
             self.autosaver.clean_up()
 

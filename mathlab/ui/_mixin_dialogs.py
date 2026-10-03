@@ -19,6 +19,7 @@ try:
 except ImportError:
     PreferencesDialog = None
 
+from mathlab.ui.session_state import reset_session  # noqa: E402
 from mathlab.utils.i18n_manager import SUPPORTED_LANGUAGES, get_i18n, t
 from mathlab.utils.theme_manager import THEMES, get_current_theme, set_theme
 
@@ -27,7 +28,11 @@ class DialogsMixin:
     """MainWindow Mixin：对话框、主题与国际化。"""
 
     def apply_theme(self, theme_key: str) -> None:
-        """全局应用指定主题，并更新主题敏感组件。"""
+        """全局应用指定主题（唯一外部入口 — UI_SYSTEM_DESIGN.md §1.5）。
+
+        样式注入由 theme_manager.set_theme() 完成；此处仅负责
+        主题敏感组件（工具栏图标等）的联动刷新。
+        """
         if theme_key not in THEMES:
             return
         set_theme(theme_key)
@@ -37,6 +42,10 @@ class DialogsMixin:
         current = get_current_theme()
         new_theme = "light" if current == "dark" else "dark"
         self.apply_theme(new_theme)
+
+    def reset_default_layout(self) -> None:
+        """「视图 → 恢复默认布局」入口（A-05）。"""
+        reset_session(self)
 
     def show_about(self) -> None:
         QMessageBox.about(self, t("dialogs.about_title"), t("dialogs.about_text"))
@@ -53,7 +62,6 @@ class DialogsMixin:
             else:
                 theme_key = next((k for k, v in THEMES.items() if v["name"] == name_or_key), "light")
             self.apply_theme(theme_key)
-            self.load_stylesheet()
 
         dlg.theme_changed.connect(on_theme_changed)
 
@@ -66,6 +74,10 @@ class DialogsMixin:
         dlg.graphics_settings_changed.connect(lambda gfx: log_pref("图形设置", str(gfx)))
         dlg.console_settings_changed.connect(lambda con: log_pref("控制台设置", str(con)))
         dlg.advanced_settings_changed.connect(lambda adv: log_pref("高级设置", str(adv)))
+
+        # D-2 白纸开关 / D-3 撤销栈开关：即时生效
+        dlg.canvas_white_paper_changed.connect(self.on_canvas_white_paper_changed)
+        dlg.undo_enabled_changed.connect(self.on_undo_enabled_changed)
         dlg.exec()
 
     def show_theme_dialog(self) -> None:
@@ -144,8 +156,14 @@ class DialogsMixin:
         self.setWindowTitle(t("main_window.title"))
 
         if hasattr(self, "central_tabs"):
-            self.central_tabs.setTabText(0, t("notebook.title") or "Interactive Notebook")
-            self.central_tabs.setTabText(1, t("main_window.geometry_tools") or "Geometry Canvas")
+            # R-08：Tab 序已调整为 画板 → Notebook → Mini GeoGebra → Jupyter，
+            # 用 widget 反查 index，避免硬编码页序（R-23：4 个中央 Tab 全部刷新）
+            self.central_tabs.setTabText(
+                self.central_tabs.indexOf(self.central_widget), t("main_window.geometry_tools") or "Geometry Canvas"
+            )
+            self.central_tabs.setTabText(
+                self.central_tabs.indexOf(self.notebook), t("notebook.title") or "Interactive Notebook"
+            )
 
         if hasattr(self, "notebook") and hasattr(self.notebook, "retranslate_ui"):
             self.notebook.retranslate_ui()
@@ -185,7 +203,8 @@ class DialogsMixin:
         self.ai_tool_action.setText(t("main_window.ai_tools"))
 
         self.about_action.setText(t("main_window.about"))
-        self.tutorial_action.setText(t("main_window.tutorial"))
+
+        self.reset_layout_action.setText(t("view.reset_layout"))
 
         self.select_action.setText(t("main_window.select"))
         self.point_action.setText(t("main_window.point"))
@@ -204,14 +223,15 @@ class DialogsMixin:
         self.lang_btn.setToolTip(t("main_window.language"))
         self.settings_btn.setToolTip(t("main_window.preferences"))
 
-        self.algebra_panel.setWindowTitle(t("algebra_panel.title").upper())
-        self.properties_panel.setWindowTitle(t("properties_panel.title").upper())
-        self.console.setWindowTitle(t("console.title").upper())
-        self.math_console.setWindowTitle(t("math_console.title").upper())
-        self.algo_vis_panel.setWindowTitle(t("algo_vis.title").upper())
-        self.ai_tools_panel.setWindowTitle(t("ai_tools.title").upper())
+        # R-14/UI-10：Dock 标题不再 .upper()
+        self.algebra_panel.setWindowTitle(t("algebra_panel.title"))
+        self.properties_panel.setWindowTitle(t("properties_panel.title"))
+        self.console.setWindowTitle(t("console.title"))
+        self.math_console.setWindowTitle(t("math_console.title"))
+        self.algo_vis_panel.setWindowTitle(t("algo_vis.title"))
+        self.ai_tools_panel.setWindowTitle(t("ai_tools.title"))
         # [I18n 修复] 补充遗漏的函数探索器标题刷新
-        self.function_explorer.setWindowTitle(t("function_explorer.title").upper())
+        self.function_explorer.setWindowTitle(t("function_explorer.title"))
 
         self.algebra_panel.retranslate_ui()
         self.properties_panel.retranslate_ui()
