@@ -133,8 +133,11 @@ black mathlab/ --line-length=120 --extend-exclude='mathlab/resources|mathlab/log
 isort mathlab/ --profile black --skip-glob='mathlab/resources/*' --skip-glob='mathlab/logs/*'
 ```
 
-> **关键**：`black` / `isort` 的配置**没有**写入 `pyproject.toml`，必须用上面的 CLI 参数，
-> 否则默认行宽 88 会与 CI（120）冲突。
+> **说明**：`black` / `isort` 的配置**已**写入 `pyproject.toml`（`[tool.black]` line-length=120、
+> `[tool.isort]` profile=black），取值与上面 CI 的 CLI 参数逐字一致，因此裸跑 `black mathlab/` 也合规。
+> 改动任一处必须两侧同步，否则本地与 CI 判定会分叉。
+> 注意 `[tool.isort]` 刻意不设 `line_length`（CI 未传该参数，isort 仍按 profile 取 88），
+> 不要"顺手"把它对齐成 120 —— 那会与 CI 产生配置优先级分歧。
 > `.bandit` 已跳过 `B102 / B307 / B602 / B603`；新增 `# nosec` 需在注释中说明理由。
 
 ### 3.5 打包（PyInstaller，两份 spec 均为 ONEDIR）

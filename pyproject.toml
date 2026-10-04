@@ -29,6 +29,19 @@ omit = [
     "mathlab/tests/*",
 ]
 
+[tool.black]
+# 取值必须与 .github/workflows/code-quality.yml 的 format-check 步骤逐字一致。
+# 目的：裸跑 `black mathlab/` 默认走 120，而不是内置的 88。
+# 缺本段时裸跑会重排 106 个文件，而 CI 按 120 判定 → 每次合并都得追一轮 style: 提交。
+line-length = 120
+extend-exclude = 'mathlab/resources|mathlab/logs'
+
+[tool.isort]
+# 同上：只镜像 CI 实际传的 --profile black 与 --skip-glob。
+# 刻意不设 line_length —— CI 未传该参数，此处设了就会与 CI 的 88 产生配置优先级分歧。
+profile = "black"
+skip_glob = ["mathlab/resources/*", "mathlab/logs/*"]
+
 [tool.coverage.report]
 show_missing = true
 exclude_lines = [

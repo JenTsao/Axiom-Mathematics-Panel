@@ -32,9 +32,7 @@ from PySide6.QtWidgets import QDockWidget, QMainWindow, QTabWidget, QWidget
 @pytest.fixture
 def isolated_qsettings(tmp_path):
     """把 IniFormat UserScope 的落盘路径重定向到 tmp_path，保护真实用户配置。"""
-    QSettings.setPath(
-        QSettings.Format.IniFormat, QSettings.Scope.UserScope, str(tmp_path)
-    )
+    QSettings.setPath(QSettings.Format.IniFormat, QSettings.Scope.UserScope, str(tmp_path))
     yield tmp_path
     QSettings.setPath(QSettings.Format.IniFormat, QSettings.Scope.UserScope, "")
 
@@ -140,9 +138,7 @@ class TestFullTypeIdempotency:
                 "id": f"fallback-{i}",
                 "name": f"FB{i}",
                 "type": t,
-                "coordinates": (
-                    {"A": 1, "B": 0, "C": 1, "D": 0} if t == "Plane3D" else {}
-                ),
+                "coordinates": ({"A": 1, "B": 0, "C": 1, "D": 0} if t == "Plane3D" else {}),
             }
             obj = GeometricObject.deserialize(data)
             eng.objects[obj.id] = obj
@@ -230,9 +226,7 @@ class TestCascadeDeleteRestore:
         assert seg_coords["x1"] == 10.0, "撤销后 Segment 未跟随 P1"
         inter_after = eng.objects[inter].coordinates.get("x")
         assert inter_after is not None
-        assert (
-            inter_after != inter_before
-        ), "撤销后二级下游 Intersection 不再随 DAG 传播"
+        assert inter_after != inter_before, "撤销后二级下游 Intersection 不再随 DAG 传播"
 
     @pytest.mark.unit
     def test_names_and_counters_consistent_after_cascade_undo(self, chain_scene):
@@ -439,9 +433,7 @@ class TestThemeRenderAndShim:
                 if expected.startswith("#"):
                     assert value == expected
                     QColor(value)  # 非 DEBUG 构建不抛错，用 isValid 显式断言
-                    assert QColor(
-                        value
-                    ).isValid(), f"{theme_name}.{legacy_key} = {value!r} 非法"
+                    assert QColor(value).isValid(), f"{theme_name}.{legacy_key} = {value!r} 非法"
             assert view["name"]  # 显示名存在
 
     @pytest.mark.unit
@@ -489,9 +481,7 @@ class TestThemeRenderAndShim:
         assert colors["name"] == "Light"
 
     @pytest.mark.unit
-    def test_set_theme_loop_emits_signal_and_applies_qss(
-        self, qapp, no_settings_io, qtbot
-    ):
+    def test_set_theme_loop_emits_signal_and_applies_qss(self, qapp, no_settings_io, qtbot):
         """三主题循环切换：每次 app 级注入唯一且 theme_changed 同步发射。"""
         import mathlab.utils.theme_manager as tm
         from mathlab.core.signals import theme_signals
@@ -574,9 +564,7 @@ class TestSessionState:
         win2.close()
 
     @pytest.mark.unit
-    def test_schema_version_mismatch_falls_back_to_default(
-        self, qapp, isolated_qsettings
-    ):
+    def test_schema_version_mismatch_falls_back_to_default(self, qapp, isolated_qsettings):
         from mathlab.ui import session_state as ss
 
         win = _StubMainWindow()
@@ -594,9 +582,7 @@ class TestSessionState:
         win2.close()
 
     @pytest.mark.unit
-    def test_missing_schema_version_falls_back_to_default(
-        self, qapp, isolated_qsettings
-    ):
+    def test_missing_schema_version_falls_back_to_default(self, qapp, isolated_qsettings):
         from mathlab.ui import session_state as ss
 
         win2 = _StubMainWindow()
@@ -615,18 +601,8 @@ class TestSessionState:
         settings = ss.make_settings()
         settings.sync()
         # objectName 与 save_session 写入侧一致（dockAlgebra / dockConsole）
-        assert (
-            settings.value(
-                ss.KEY_DOCK_VISIBLE.format(name="dockConsole"), None, type=bool
-            )
-            is False
-        )
-        assert (
-            settings.value(
-                ss.KEY_DOCK_VISIBLE.format(name="dockAlgebra"), None, type=bool
-            )
-            is True
-        )
+        assert settings.value(ss.KEY_DOCK_VISIBLE.format(name="dockConsole"), None, type=bool) is False
+        assert settings.value(ss.KEY_DOCK_VISIBLE.format(name="dockAlgebra"), None, type=bool) is True
         win.close()
 
     @pytest.mark.unit
@@ -742,10 +718,7 @@ class TestCanvasThemeRefresh:
         oid = eng.add_point(1, 2, name="P1")
         canvas.resync_from_engine(eng)
         theme_signals.theme_changed.emit("dark")
-        assert (
-            canvas._kind_color("point", oid).name().upper()
-            == THEME_TOKENS["dark"]["obj.point"].upper()
-        )
+        assert canvas._kind_color("point", oid).name().upper() == THEME_TOKENS["dark"]["obj.point"].upper()
 
     @pytest.mark.unit
     def test_resync_from_engine_populates_metadata(self, canvas, isolated_qsettings):
