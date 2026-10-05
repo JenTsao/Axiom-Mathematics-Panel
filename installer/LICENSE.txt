@@ -1,0 +1,226 @@
+﻿Custom Advanced Source‑Available License v1.0 (CASAL v1.0)
+
+Version 1.0 – Released on July 21, 2026
+Copyright (C) 2026 Jinpeng Cao (jencao)
+
+---
+
+Preamble
+
+This license is a source‑available, non‑OSI‑approved commercial license. It grants you the right to view, modify, and distribute the source code, but strictly restricts competitive use, AI/ML training, and unethical applications, while requiring strong copyleft compliance. By using this software, you agree to all terms below.
+
+All rights not expressly granted in this license are reserved by the Copyright Holder (jencao).
+
+If you wish to use this software in a proprietary, closed‑source, competitive, or AI‑training context without complying with the obligations herein, you must obtain a separate commercial license from the Copyright Holder.
+
+---
+
+1. Grant of Rights
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, subject to the following conditions.
+
+---
+
+2. Mandatory Copyleft Conditions
+
+2.1 Source Code Disclosure (Distribution & SaaS)
+If you distribute, publish, or make the Software (or any modified/derived version thereof) available over a network as a service (SaaS, cloud, or hosted API), you must make the complete source code of your entire work (including modifications and any larger work incorporating the Software) available to all users under the terms of this same license (or a substantially equivalent license). The Software may not be integrated into any proprietary or closed‑source commercial software unless a separate commercial license is obtained.
+
+2.2 Retention of Notices
+Any distribution, hosted service, or modified version of the Software must retain, in all copies or in a prominent user‑accessible location (e.g., a web application's "About" page or documentation), the above copyright notice, this full license text, and the disclaimer of warranty below.
+
+2.3 No Modification‑Marking Required
+You are not required to indicate which specific files or lines you have changed. However, you may not remove or alter any existing copyright or attribution notices contained in the original Software.
+
+2.4 Mandatory Name Change for Derivatives
+If you modify the Software and distribute or host your modified version, you must clearly state that it is a modified version and you must adopt a distinct name that clearly differentiates your product from the original Software. You may not use the project name "jencao", "Cao", or any confusingly similar variant to imply endorsement, original authorship, or official association with the Copyright Holder.
+
+---
+
+3. Contributor License Agreement (Inbound = Outbound)
+
+By submitting any code, patch, or contribution (collectively, "Contribution") to this project, you automatically grant the Copyright Holder a perpetual, worldwide, royalty‑free, irrevocable license to use, modify, and distribute your Contribution under the terms of this license.
+
+Additionally, you acknowledge and agree that the Copyright Holder reserves the right to relicense your Contribution under separate commercial terms (see Section 11) without seeking your further consent.
+
+---
+
+4. Ethical Use Restrictions
+
+You may not use, deploy, or distribute the Software, or any derivative works thereof, for the following purposes:
+
+- a) Surveillance & Human Rights Violations
+  Any activity that facilitates unlawful surveillance, mass data collection without consent, or violations of internationally recognized human rights (including but not limited to the UN Universal Declaration of Human Rights).
+
+- b) Military & Nuclear Applications
+  Any activity directly or indirectly related to military operations, weapons systems, ammunition, or nuclear facilities.
+
+Violation of this Section 4 shall result in the immediate and automatic termination of all rights granted under this license, without any cure period (notwithstanding Section 15).
+
+---
+
+5. Patent Grant and Termination (Retaliation Clause)
+
+5.1 Patent License
+This license grants you a perpetual, worldwide, royalty‑free, non‑exclusive patent license to make, have made, use, offer to sell, sell, import, and otherwise transfer the Software, to the extent that such practice would otherwise infringe any patent claims owned or licensable by the Copyright Holder that are necessarily infringed by the Software.
+
+5.2 Automatic Termination for Patent Litigation
+If you or your entity files any patent lawsuit against any third party alleging that the Software (or any part of it) infringes a patent, then any and all rights granted to you under this license (including the patent license) shall terminate immediately and automatically, and such termination shall be irrevocable.
+
+---
+
+6. No Endorsement
+
+You may not use the name "jencao", "Jinpeng Cao", the project name, trademark, or logo of the Copyright Holder, nor any of its contributors, to endorse, promote, or advertise your derived product without the prior written permission of the Copyright Holder.
+
+---
+
+7. NOTICE File Requirement
+
+If you distribute the Software (or any derivative work) in binary form, or as a hosted service, you must include a conspicuous NOTICE file that reproduces the copyright and attribution notices of the original Software. This NOTICE file must be included in your distribution or hosted service's user interface (e.g., in the docs/ folder, or a "Licenses" section).
+
+---
+
+8. Documentation License
+
+For the Software's accompanying documentation (e.g., user manuals, README files, API docs), you are not required to apply the copyleft obligations of Section 2. You may use, modify, and redistribute the documentation under permissive terms, provided that you retain the original copyright notice.
+
+---
+
+9. Export Control
+
+You agree to comply with all applicable international and national export control laws, including but not limited to the sanctions administered by the United Nations, the U.S. Department of Commerce, the U.S. Office of Foreign Assets Control (OFAC), and the European Union. You may not use, export, or re‑export the Software in violation of any such laws or to any prohibited country, entity, or person.
+
+---
+
+10. Additional Terms on Derivative Works
+
+You may add additional reasonable terms to your derivative works (e.g., requiring attribution of your modifications, or restricting specific use cases of your version), provided that such additional terms do not conflict with, nullify, or undermine the core obligations of this license, including but not limited to:
+
+- The copyleft obligations of Section 2 (Source Code Disclosure);
+- The patent termination clause of Section 5;
+- The ethical restrictions of Section 4;
+- The non‑compete clause of Section 14.
+
+If any additional term conflicts with this license, the conflicting term is void and this license shall prevail.
+
+---
+
+11. Commercial Dual‑Licensing Reserved
+
+The Copyright Holder expressly reserves the right to license the Software (and any Contributions incorporated therein) under separate commercial terms.
+
+This means:
+
+- You are granted the rights under this source‑available license provided you comply with all its copyleft, ethical, and non‑compete obligations.
+- If you wish to use the Software in a proprietary, closed‑source, competitive, or AI‑training context without complying with the obligations herein, you must obtain a separate commercial license from the Copyright Holder by contacting jencao directly.
+
+---
+
+12. License Versioning
+
+The Copyright Holder may publish revised and/or new versions of this Custom Advanced Source‑Available License (CASAL) from time to time. Each version will be given a distinguishing version number (e.g., v4.0, v4.1, v5.0).
+
+You may choose to use the Software under the terms of either: (a) the version of this license under which you originally received the Software, or (b) any later version published by the Copyright Holder.
+
+---
+
+13. Source Code Availability
+
+When you distribute the source code of the Software or your derivative work under Section 2, you must provide it in a commonly used machine‑readable format (e.g., .zip, .tar.gz, or via a public version control repository).
+
+You are NOT required to guarantee that the source code you provide is fully buildable, compilable, or runnable in any specific environment, provided that you have made a reasonable effort to include the source files and a basic list of core dependencies.
+
+---
+
+14. Non‑Compete Clause (Competing Products)
+
+You may not use the Software, or any derivative work thereof, to develop, market, or distribute a product or service that competes with the Copyright Holder's core offerings.
+
+A "Competing Product" is defined as any software, platform, or service that:
+
+- Provides substantially similar core functionality to the Software as originally released by the Copyright Holder; and
+- Targets the same primary user base or market segment; and
+- Is offered as a substitute for, or alternative to, the Software in the same application domain.
+
+For clarification, the Copyright Holder's "core offerings" shall be defined as the primary features described in the official documentation and README of the original Software repository. If a potential competing product is uncertain, the user may request a written determination from the Copyright Holder, and such determination shall be binding.
+
+Violation of this Section 14 shall result in the immediate and automatic termination of all rights granted under this license, without any cure period (notwithstanding Section 15).
+
+---
+
+15. Cure Period for Non‑Material Breaches
+
+For breaches of Sections 2, 6, 7, or 13 (copyleft, endorsement, NOTICE, source availability) that are not intentional or material, you shall have a 30‑day cure period from the date of written notice from the Copyright Holder to remedy the breach. If you cure the breach within this period, your rights under this license are automatically reinstated.
+
+Breaches of Sections 4 (Ethical Use), 5 (Patent Litigation), and 14 (Non‑Compete) are not subject to any cure period and result in immediate, permanent termination.
+
+---
+
+16. AI / Machine Learning Training Restriction
+
+You may not use the Software, including its source code, object code, documentation, comments, logs, or any associated data, to train, fine‑tune, validate, or develop any artificial intelligence, machine learning, deep learning, or large language model (LLM) system, whether commercial or research‑based. This restriction applies to both the original Software and any derivative works thereof. For clarity, this prohibition includes using the Software as part of a training dataset, as a benchmark, or as a synthetic data generator for AI models.
+
+Violation of this Section 16 shall result in the immediate and automatic termination of all rights granted under this license, without any cure period.
+
+---
+
+17. Privacy and Data Collection Disclaimer
+
+The original Software, as provided by the Copyright Holder, does not collect any personal data, usage analytics, or telemetry by default.
+
+If you modify the Software to introduce any data collection, tracking, or user monitoring functionality, you shall be solely responsible for:
+- Complying with all applicable data protection and privacy laws (including but not limited to GDPR, CCPA/PIPL, and any other regional regulations);
+- Obtaining appropriate user consent where required;
+- Clearly disclosing such data collection practices to your end users.
+
+The Copyright Holder (jencao) assumes no liability or responsibility for any privacy violations, data breaches, or regulatory penalties arising from your modifications or deployment choices.
+
+---
+
+18. Liability Cap
+
+NOTWITHSTANDING ANY OTHER PROVISION OF THIS LICENSE, THE TOTAL AGGREGATE LIABILITY OF THE COPYRIGHT HOLDER AND CONTRIBUTORS FOR ANY AND ALL CLAIMS ARISING FROM OR RELATING TO THIS LICENSE OR THE SOFTWARE, WHETHER IN CONTRACT, TORT, OR OTHERWISE, SHALL NOT EXCEED THE GREATER OF (A) ONE HUNDRED U.S. DOLLARS ($100.00) OR (B) THE TOTAL FEES RECEIVED BY THE COPYRIGHT HOLDER FROM THE USER FOR COMMERCIAL LICENSING OF THE SOFTWARE, IF ANY. THIS LIMITATION APPLIES EVEN IF ANY REMEDY FAILS OF ITS ESSENTIAL PURPOSE.
+
+---
+
+19. Survival of Core Clauses
+
+Upon termination of this license, the following clauses shall survive and remain in full force and effect indefinitely:
+
+- Section 4 (Ethical Use Restrictions)
+- Section 6 (No Endorsement)
+- Section 9 (Export Control)
+- Section 16 (AI/ML Training Restriction)
+- Section 17 (Privacy Disclaimer)
+- Section 18 (Liability Cap)
+- Section 19 (Survival – itself)
+- Section 20 (Disclaimer of Warranty)
+- Section 21 (Governing Law)
+- Section 22 (Severability)
+
+All other rights and obligations cease immediately upon termination.
+
+---
+
+20. Disclaimer of Warranty and Liability
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT, OR OTHERWISE, ARISING FROM, OUT OF, OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE, EXCEPT AS EXPRESSLY LIMITED IN SECTION 18.
+
+---
+
+21. Governing Law
+
+This license shall be governed by and construed in accordance with the laws of the jurisdiction where the alleged infringement or dispute arises (i.e., the jurisdiction of the defendant's principal place of business or domicile), without regard to its conflict of law provisions. Any legal action or proceeding relating to this license shall be brought exclusively in the courts located in that jurisdiction.
+
+---
+
+22. Severability
+
+If any provision of this license is held by a court of competent jurisdiction to be invalid, illegal, or unenforceable for any reason, such provision shall be modified to the minimum extent necessary to make it enforceable, or if such modification is not possible, it shall be severed from this license. The remaining provisions of this license shall continue in full force and effect.
+
+---
+
+END OF LICENSE
+
+Issued on: July 21, 2026

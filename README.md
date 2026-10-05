@@ -329,11 +329,11 @@ pre-commit install
 
 #### 方式二：使用预编译包
 
-从 [Releases](https://github.com/jencaoking/Axiom-Mathematics-Panel/releases) 页面下载对应平台的安装包：
+从 [Releases](https://github.com/jencaoking/Axiom-Mathematics-Panel/releases) 页面下载对应平台的安装包（以 v3.8.0 为例）：
 
-- **Windows**：`MathLab-3.8.0-win64.exe`
-- **macOS**：`MathLab-3.8.0-macos.dmg`
-- **Linux**：`MathLab-3.8.0-linux.AppImage`
+- **Windows**：安装程序 `MathLab-3.8.0-Windows-Setup.exe`（推荐，含中文/英文安装向导与许可协议页），或便携包 `MathLab-v3.8.0-Windows.zip`（解压即用）
+- **macOS**：`MathLab-v3.8.0-macOS.zip`（解压后将 MathLab.app 拖入「应用程序」）
+- **Linux**：`MathLab-v3.8.0-Linux.tar.gz`（解压后运行 `MathLab/MathLab`）
 
 ### 启动应用
 

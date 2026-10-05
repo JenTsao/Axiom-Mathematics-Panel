@@ -110,6 +110,21 @@ jobs:
             pyinstaller mathlab.spec --clean
           fi
 
+      # ── Windows 安装包（Inno Setup，版本号取自 version.py 唯一真源）──────
+      - name: Build Windows Installer
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          choco install innosetup -y --no-progress
+          $ver = (Get-Content mathlab/utils/version.py | Select-String '__version__').Line -replace '.*"(.*)".*', '$1'
+          $iscc = (Get-Command iscc.exe -ErrorAction SilentlyContinue).Source
+          if (-not $iscc) { $iscc = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe' }
+          if (-not (Test-Path $iscc)) { throw "ISCC.exe not found at $iscc" }
+          & $iscc "/DAPP_VERSION=$ver" "installer\MathLab.iss"
+          if ($LASTEXITCODE -ne 0) { throw "ISCC failed with exit code $LASTEXITCODE" }
+          Copy-Item "dist\MathLab-$ver-Windows-Setup.exe" -Destination .
+          echo "Built MathLab-$ver-Windows-Setup.exe"
+
       # ── 修复脚本注入：通过 env 传递 ref_name ──────────────────────────
       - name: Archive Windows build
         if: runner.os == 'Windows'
@@ -139,6 +154,7 @@ jobs:
           name: MathLab-${{ matrix.os }}-${{ github.ref_name }}
           path: |
             MathLab-*-Windows.zip
+            MathLab-*-Windows-Setup.exe
             MathLab-*-macOS.zip
             MathLab-*-Linux.tar.gz
           retention-days: 30
@@ -175,6 +191,7 @@ jobs:
         with:
           files: |
             artifacts/MathLab-*-Windows.zip
+            artifacts/MathLab-*-Windows-Setup.exe
             artifacts/MathLab-*-macOS.zip
             artifacts/MathLab-*-Linux.tar.gz
           generate_release_notes: true

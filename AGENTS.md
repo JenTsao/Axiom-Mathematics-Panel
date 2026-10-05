@@ -59,6 +59,7 @@ Axiom Mathematics Panel/
 │   ├── build_spec.spec             # PyInstaller 完整版（含 JupyterLab 资源）
 │   └── requirements.txt            # 打包用依赖清单
 ├── MathLab.CSharpEngine/           # .NET Standard 2.0 加速内核（可选）
+├── installer/                      # Inno Setup Windows 安装包脚本（§3.6）
 ├── mathlab.spec                    # PyInstaller 主 spec（根目录，CI 使用）
 ├── requirements.txt                # 根依赖清单（**CI 使用**）
 ├── pyproject.toml                  # 仅含 pytest + coverage 配置
@@ -150,6 +151,18 @@ pyinstaller mathlab/build_spec.spec   # 完整版：额外收集 jupyterlab/note
 
 打包资源路径解析统一走 `mathlab/main.py::_find_resource()`（兼容 PyInstaller 5.x/6.x ONEDIR 与 ONEFILE），
 **不要**在新代码里手写 `sys._MEIPASS` 拼接。
+
+### 3.6 Windows 安装包（Inno Setup）
+
+```bash
+pyinstaller mathlab.spec                          # 先生成 dist/MathLab/
+iscc /DAPP_VERSION=3.8.0 installer/MathLab.iss    # 产出 dist/MathLab-3.8.0-Windows-Setup.exe
+```
+
+- 版本号唯一真源是 `mathlab/utils/version.py`（CI 自动提取并传入 `APP_VERSION`；未传时占位 0.0.0，仅供语法验证）。
+- 安装界面为中英双语：多语言自动出现「选择安装语言」页，随后是 CASAL 许可协议页；中文文案来自随仓库分发的 `installer/languages/ChineseSimplified.isl`（取自 jrsoftware/issrc，允许随脚本分发）。
+- `installer/LICENSE.txt` 由根 `LICENSE`（Markdown）转出的纯文本，许可证变更时必须重新生成并逐条核对一致。
+- 卸载时自动清理运行时产物（`logs/`、`crash.log`、`webcache/`、`autosave/`），新增运行时写盘目录需同步 `[UninstallDelete]`。
 
 ---
 
