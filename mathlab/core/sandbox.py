@@ -7,6 +7,7 @@ import threading
 import time
 from queue import Queue
 
+from mathlab.core.sandbox_security import is_code_safe
 from mathlab.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -149,6 +150,20 @@ class SandboxProcess:
         self.running = True
 
     def run_code(self, code, timeout=None):
+        # [P0 安全加固] 执行前先用强扫描器拦截。
+        # 此前本方法不做任何检查，唯一的静态防线是子进程 sandbox_script.py 里的弱化副本
+        # （缺少 dunder 属性 / 危险名字规则），__subclasses__ 两步式与 getattr(__globals__)
+        # 等写法可以直接逃逸。现在父进程先拦一道，子进程内的副本作为最后一道防线。
+        is_safe, safety_error = is_code_safe(code)
+        if not is_safe:
+            logger.warning("沙箱拒绝执行不安全的代码: %s", safety_error.splitlines()[0])
+            return {
+                "success": False,
+                "output": "",
+                "error": safety_error,
+                "result": None,
+            }
+
         if timeout is None:
             timeout = self.max_time_seconds
 

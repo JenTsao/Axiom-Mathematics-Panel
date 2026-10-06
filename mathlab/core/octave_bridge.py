@@ -5,6 +5,7 @@ import numpy as np
 from PySide6.QtCore import QObject, Signal
 
 from mathlab.core.num_engine import NumEngine
+from mathlab.core.sandbox_security import is_code_safe
 
 
 class BridgeSignals(QObject):
@@ -301,6 +302,14 @@ class OctaveBridge:
         :raises OctaveBridgeError: 翻译或执行失败时抛出
         """
         python_code = self.translate(code)
+
+        # [P0 安全加固] 这是主进程内的 eval/exec，env 里挂着 np，
+        # `np.__builtins__['__import__']('os')` 之类写法此前可直接逃逸。
+        # 现在对翻译后的 Python 文本先过一遍强扫描器；
+        # 语法错误不在这里拦截，交给下面的 eval/exec 分支给出原有翻译错误。
+        scan_ok, scan_reason = is_code_safe(python_code)
+        if not scan_ok and not scan_reason.startswith("语法错误"):
+            raise OctaveBridgeError(f"安全拦截: 拒绝执行该代码。\n  原始代码: {code!r}\n  {scan_reason}")
 
         import ast
 

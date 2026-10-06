@@ -2,17 +2,21 @@ import warnings
 from functools import lru_cache
 
 import numpy as np
-from sympy import lambdify, parse_expr, symbols
+from sympy import lambdify, symbols
 
+from mathlab.core.expression_guard import safe_parse_expr
 from mathlab.core.models.base import GeometricObject
 
 
-# 表达式解析缓存：相同表达式字符串只解析一次，避免重复 parse_expr + lambdify 开销
+# 表达式解析缓存：相同表达式字符串只解析一次，避免重复解析 + lambdify 开销
+# [P0 安全加固] 三处解析统一走 safe_parse_expr：.mathlab 工程文件里的 expression 字段
+# 会原样传进来，直接用 sympy.parse_expr 等于执行工程文件里的代码
+# （sympy 在 global_dict=None 时会注入 builtins）。
 @lru_cache(maxsize=128)
 def _get_cached_lambdified_func(expression_str):
     """将表达式字符串解析为 SymPy 表达式并 lambdify 为 NumPy 函数（带缓存）"""
     x_sym = symbols("x")
-    expr = parse_expr(expression_str, local_dict={"x": x_sym})
+    expr = safe_parse_expr(expression_str, local_dict={"x": x_sym})
     return lambdify(x_sym, expr, "numpy")
 
 
@@ -20,7 +24,7 @@ def _get_cached_lambdified_func(expression_str):
 def _get_cached_lambdified_func_xy(expression_str):
     """将二元表达式字符串解析为 SymPy 表达式并 lambdify 为 NumPy 函数（带缓存）"""
     x_sym, y_sym = symbols("x y")
-    expr = parse_expr(expression_str, local_dict={"x": x_sym, "y": y_sym})
+    expr = safe_parse_expr(expression_str, local_dict={"x": x_sym, "y": y_sym})
     return lambdify((x_sym, y_sym), expr, "numpy")
 
 
@@ -28,7 +32,7 @@ def _get_cached_lambdified_func_xy(expression_str):
 def _get_cached_lambdified_func_theta(expression_str):
     """将极坐标表达式字符串解析为 SymPy 表达式并 lambdify 为 NumPy 函数（带缓存）"""
     theta_sym = symbols("theta")
-    expr = parse_expr(expression_str, local_dict={"theta": theta_sym})
+    expr = safe_parse_expr(expression_str, local_dict={"theta": theta_sym})
     return lambdify(theta_sym, expr, "numpy")
 
 

@@ -4,6 +4,11 @@ import threading
 from typing import TYPE_CHECKING, Any
 
 from mathlab.core.cs_calculus_engine import cs_calculus
+from mathlab.core.expression_guard import (
+    default_transformations,
+    safe_parse_expr,
+    safe_sympify,
+)
 
 try:
     from mathlab.utils.logger import get_logger
@@ -76,18 +81,15 @@ def _get_sympy_func(name: str) -> Any:
 
 @functools.lru_cache(maxsize=1024)
 def _cached_sympify(expr_str):
-    _load_sympy()
-    from sympy import sympify
-
-    return sympify(expr_str)
+    # [P0 安全加固] 原实现直接 sympify(expr_str)：sympify 对字符串会走注入 builtins 的
+    # parse_expr，"__import__('os').getpid()" 这类表达式会被真的执行。
+    return safe_sympify(expr_str)
 
 
 @functools.lru_cache(maxsize=1024)
 def _cached_parse_expr(expr_str):
-    _load_sympy()
-    from sympy.parsing.sympy_parser import parse_expr, standard_transformations
-
-    return parse_expr(expr_str, transformations=standard_transformations)
+    # [P0 安全加固] 同上，parse_expr 不传 global_dict 时同样注入 builtins
+    return safe_parse_expr(expr_str)
 
 
 class CASProvider:
@@ -448,20 +450,18 @@ class SmartCalculusSolver:
         """
         _load_sympy()
         from sympy import Integral, Symbol, integrate
-        from sympy.parsing.sympy_parser import (
-            implicit_multiplication,
-            parse_expr,
-            standard_transformations,
-        )
+        from sympy.parsing.sympy_parser import implicit_multiplication
 
         x = Symbol(var_name)
         try:
-            # [安全修复] 使用 parse_expr 替代 sympify，避免代码注入
-            transformations = standard_transformations + (implicit_multiplication,)
-            expr = parse_expr(
+            # [P0 安全加固] 原注释称"使用 parse_expr 替代 sympify，避免代码注入"，
+            # 但 sympy 在 global_dict=None 时照样注入 builtins，注入并未被挡住。
+            # 现在走统一的安全解析入口。
+            transformations = default_transformations() + (implicit_multiplication,)
+            expr = safe_parse_expr(
                 expression_str,
-                transformations=transformations,
                 local_dict={var_name: x},
+                transformations=transformations,
             )
         except Exception:
             raise ValueError(f"无法解析数学表达式: {expression_str}")

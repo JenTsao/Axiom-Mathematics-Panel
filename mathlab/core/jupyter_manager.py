@@ -1,5 +1,6 @@
 import os
 import queue
+import secrets
 import socket
 import subprocess
 import sys
@@ -245,7 +246,10 @@ class JupyterManager:
 
         self.port: int = _find_free_port(port_start, port_end)
         self._process: Optional[subprocess.Popen] = None
-        self._token: str = "mathlab-embedded"
+        # [P0 安全加固] 令牌必须是每次启动随机的。
+        # 原来写死 "mathlab-embedded"：任何本机进程（或诱导用户访问的网页）都能拿这个
+        # 常量拼出 URL 直接驱动内嵌内核执行代码，等于把 token 变成了公开信息。
+        self._token: str = secrets.token_urlsafe(32)
         self._url: str = ""
         self._lock = threading.Lock()
         # 子进程输出的环形缓冲：供启动失败时诊断（防止管道阻塞见 _drain_process_output）
@@ -288,10 +292,11 @@ class JupyterManager:
                 self._token,
                 "--ServerApp.password",
                 "",
-                "--ServerApp.allow_origin",
-                "*",
-                "--ServerApp.disable_check_xsrf",
-                "True",
+                # [P0 安全加固] 移除 allow_origin=* 与 disable_check_xsrf=True。
+                # 内嵌视图是直接加载 http://127.0.0.1:<port>/lab 的，页面本身就是同源，
+                # 通配 CORS 加上关闭 XSRF 校验只会把本机内核接口暴露给任意来源的跨站请求
+                # （浏览器访问恶意网页即可对 127.0.0.1 发 POST 执行代码）。
+                # 两者都退回 jupyter_server 的默认值：仅同源、XSRF 校验开启。
             ]
 
             # PyInstaller 打包环境下的特殊处理
@@ -395,7 +400,9 @@ class JupyterManager:
                 return False
 
             try:
-                req = urllib.request.Request(check_url)
+                # [P0 安全加固] 就绪探测必须带令牌：jupyter_server 2.x 的 /api/status
+                # 需要认证，匿名探测只会拿到 403，导致启动检查永远等不到 200。
+                req = urllib.request.Request(check_url, headers={"Authorization": f"token {self._token}"})
                 with urllib.request.urlopen(req, timeout=2) as resp:  # nosec B310 - 已验证仅访问本地地址
                     if resp.status == 200:
                         return True

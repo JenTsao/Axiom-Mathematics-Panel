@@ -13,18 +13,17 @@ from sympy import (
     exp,
     lambdify,
     log,
-    parse_expr,
     pi,
     sin,
     sqrt,
     symbols,
     tan,
 )
-from sympy.parsing.sympy_parser import standard_transformations
 
 # 星号导入用于向后兼容（外部代码可能使用 `from geometry_engine import *`）
 # 重新导出所有几何模型类（已拆分到 mathlab.core.models 子包），保持向后兼容
 # 现有的 `from mathlab.core.geometry_engine import XXX` 无需修改
+from mathlab.core.expression_guard import safe_parse_expr
 from mathlab.core.models import *  # noqa: F401, F403
 from mathlab.core.models import (
     DAG,
@@ -85,7 +84,8 @@ def _compile_constraint_func(constraint_str: str, var_names: tuple):
         symbol_seq.append(sym)
 
     try:
-        expr = parse_expr(constraint_str, local_dict=local_dict, transformations=standard_transformations)
+        # [P0 安全加固] 约束字符串同样来自 .mathlab 工程文件，改走统一安全解析入口
+        expr = safe_parse_expr(constraint_str, local_dict=local_dict)
         if isinstance(expr, Eq):
             expr = expr.lhs - expr.rhs
         return lambdify(tuple(symbol_seq), expr, "numpy")
