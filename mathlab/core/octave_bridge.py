@@ -141,6 +141,11 @@ class OctaveBridge:
             "scatter": self._builtin_scatter,
             "bar": self._builtin_bar,
             "stem": self._builtin_stem,
+            # ── 输出 ────────────────────────────────────────────────────
+            # Octave 的 disp() 此前在 env 里根本没有定义，写 disp(x) 必然 NameError。
+            # disp 在 Octave 中打印后无返回值，而本桥接的控制台是按"表达式的返回值"
+            # 显示的，所以直接把参数原样返回即可让用户看到内容，不必另开一条打印通道。
+            "disp": lambda *a: (a[0] if len(a) == 1 else list(a)),
         }
 
     # ──────────────────────────────────────────────────────────────────────────

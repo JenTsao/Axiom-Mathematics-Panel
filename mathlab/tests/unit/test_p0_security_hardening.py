@@ -416,7 +416,7 @@ def _lab_available() -> bool:
     """花几秒确认 ``jupyter lab`` 子命令真的可用。
 
     ``jupyterlab`` 包能被 import，不代表 ``jupyter-lab`` 入口点已注册
-    （本机就是这种状态：打印 "Jupyter command \`jupyter-lab\` not found"）。
+    （本机就是这种状态：jupyter 直接报 "Jupyter command `jupyter-lab` not found"）。
     少了这一步，夹具会白等满整个启动超时。
     """
     import subprocess

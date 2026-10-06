@@ -6,6 +6,9 @@ from sympy import lambdify, symbols
 
 from mathlab.core.expression_guard import safe_parse_expr
 from mathlab.core.models.base import GeometricObject
+from mathlab.utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 # 表达式解析缓存：相同表达式字符串只解析一次，避免重复解析 + lambdify 开销
@@ -211,7 +214,7 @@ class ImplicitPlot(GeometricObject):
             self.points_data = points
             self.coordinates = {"points": points}
         except Exception as e:
-            print(f"Error generating implicit plot points: {e}")
+            logger.error("隐函数取点失败: %s", e, exc_info=True)
             self.points_data = []
 
     def to_latex(self):

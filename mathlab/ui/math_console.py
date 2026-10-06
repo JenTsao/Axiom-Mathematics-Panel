@@ -427,7 +427,9 @@ class MathConsole(QDockWidget):
 
     def retranslate_ui(self) -> None:
         """更新所有 UI 文本为当前语言"""
-        self.setWindowTitle(t("math_console.title").upper())
+        # Dock 标题不再 .upper()：中文没有大小写语义，且会把英文标题压成难读的大写
+        # （其余 Dock 已在 R-14/UI-10 清掉，这里是漏网的一处；切换语言时会重新大写）
+        self.setWindowTitle(t("math_console.title"))
         if hasattr(self, "_lbl_ws"):
             self._update_workspace_label()
         if hasattr(self, "_btn_clear"):

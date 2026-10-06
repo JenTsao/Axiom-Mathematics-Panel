@@ -304,3 +304,26 @@ class TestErrorHandling:
         """访问未定义变量应抛出 OctaveBridgeError"""
         with pytest.raises(OctaveBridgeError):
             bridge.evaluate("undefined_var_xyz + 1")
+
+
+class TestBuiltinDisp:
+    """Octave 的 disp() 此前在 env 里没有定义，写它必然 NameError。"""
+
+    @pytest.mark.unit
+    def test_disp_returns_scalar(self, bridge):
+        assert bridge.evaluate("disp(3)") == 3
+
+    @pytest.mark.unit
+    def test_disp_returns_matrix(self, bridge):
+        import numpy as np
+
+        result = bridge.evaluate("disp([1 2; 3 4])")
+        assert np.array_equal(np.asarray(result), np.array([[1, 2], [3, 4]]))
+
+    @pytest.mark.unit
+    def test_disp_of_assigned_variable(self, bridge):
+        bridge.evaluate("v = [1; 2; 3]")
+        import numpy as np
+
+        result = bridge.evaluate("disp(v)")
+        assert np.array_equal(np.asarray(result).reshape(-1), np.array([1, 2, 3]))
