@@ -65,7 +65,8 @@ jobs:
         run: |
           cd mathlab/resources/web_src
           npm ci
-          npm run build
+          # 同时构建 monaco 与 omni_bar 两个 bundle（见 test.yml 中的同类说明）
+          npm run build:all
 
       - name: Setup Python
         uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b # v5.3.0

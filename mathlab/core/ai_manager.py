@@ -30,17 +30,60 @@ except ImportError:
         QObject, QThread, Signal = object, object, object
 
 try:
-    from openai import APIConnectionError, AuthenticationError, OpenAI
+    from openai import (
+        APIConnectionError,
+        APIStatusError,
+        APITimeoutError,
+        AuthenticationError,
+        OpenAI,
+        RateLimitError,
+    )
 
     OPENAI_AVAILABLE = True
 except ImportError:
     OPENAI_AVAILABLE = False
-    OpenAI, AuthenticationError, APIConnectionError = object, Exception, Exception  # type: ignore  # noqa: E501
+    OpenAI = object  # type: ignore[assignment, misc]
+    AuthenticationError = APIConnectionError = Exception  # type: ignore[assignment, misc]
+    APIStatusError = APITimeoutError = RateLimitError = Exception  # type: ignore[assignment, misc]
 
 from mathlab.core.memory_manager import ChatMemoryManager
 from mathlab.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+# HTTP 客户端超时与重试：openai SDK 默认 read timeout 是 600 秒，
+# 网关挂住时用户要等 10 分钟才看到错误；这里收紧到"连接快、读取宽松、失败少量重试"。
+AI_CONNECT_TIMEOUT = 10.0
+AI_READ_TIMEOUT = 120.0
+AI_WRITE_TIMEOUT = 30.0
+AI_POOL_TIMEOUT = 10.0
+AI_MAX_RETRIES = 2
+
+
+def describe_api_error(exc: Exception) -> str:
+    """把 SDK/网络异常翻译成面向用户的简短提示。
+
+    [P1 修复] 原先直接把 ``str(exc)`` 发到 UI：自建网关的 base_url、上游返回体、
+    请求 id 都会原样出现在聊天区（既泄露部署细节，对用户也没有可读性）。
+    完整异常仍然写日志，只是不再进 UI。
+    """
+    if isinstance(exc, AuthenticationError):
+        return "API Key 无效或已过期，请在“偏好设置”里重新填写。"
+    if isinstance(exc, RateLimitError):
+        return "请求过于频繁或额度已用尽，请稍后再试。"
+    if isinstance(exc, APITimeoutError):
+        return "请求超时：模型服务器没有及时响应。"
+    if isinstance(exc, APIConnectionError):
+        return "无法连接到 AI 服务，请检查网络或 Base URL 是否正确。"
+    if isinstance(exc, APIStatusError):
+        status = getattr(exc, "status_code", None)
+        if status in (404, 410):
+            return f"接口或模型不存在（HTTP {status}），请检查模型名称。"
+        if status and status >= 500:
+            return f"AI 服务暂时不可用（HTTP {status}），请稍后再试。"
+        return f"AI 服务返回错误（HTTP {status}）。" if status else "AI 服务返回错误。"
+    return "AI 请求失败，详见日志。"
+
 
 # 工具 Schema 统一从 ai_tools.py 导入（消除重复定义）
 DRAW_TOOL_SCHEMA = GEOMETRY_DRAW_TOOL  # 别名，供 quiz_panel 等模块使用
@@ -208,8 +251,10 @@ class AIEngineWorker(QThread):
 
         except Exception as e:
             self.state_changed.emit(AIState.ERROR)
-            self.error_occurred.emit(str(e))
-            logger.error(f"AI Worker Error: {e}", exc_info=True)
+            # [P1 修复] 不再把 str(e) 原样发给 UI（会带出 base_url / 上游响应体），
+            # 完整异常只写日志
+            self.error_occurred.emit(describe_api_error(e))
+            logger.error("AI Worker Error: %s", e, exc_info=True)
 
 
 class AIManager(QObject):
@@ -251,8 +296,15 @@ class AIManager(QObject):
         self.current_model = settings.get("ai_model", "deepseek-chat")
 
         if api_key and OPENAI_AVAILABLE:
-            self.client = OpenAI(api_key=api_key, base_url=base_url)
-            logger.info(f"AI 引擎已初始化: {base_url} [{self.current_model}]")
+            # [P1 修复] 显式设定超时与重试：默认 read timeout 600s 会让挂死的网关
+            # 占据用户整整 10 分钟，且 SDK 默认不重试。
+            self.client = OpenAI(
+                api_key=api_key,
+                base_url=base_url,
+                timeout=(AI_CONNECT_TIMEOUT, AI_READ_TIMEOUT),
+                max_retries=AI_MAX_RETRIES,
+            )
+            logger.info("AI 引擎已初始化: %s [%s]", base_url, self.current_model)
         else:
             self.client = None
 
@@ -1297,14 +1349,19 @@ class PlannerAgent(BaseMathAgent):
                 if hint:
                     on_thought_cb(f"  💡 提示：{hint}")
 
-            # 通过消息总线发送任务请求消息
+            # 通过消息总线广播本步骤的意图（仅用于可观测性）。
+            # [P1 修复] 这里原先发的是 TASK_REQUEST：MessageRouter 收到后会**同步**调用
+            # 目标 Agent 的 solve_problem（agent_message.py:373→392→427），而下面第
+            # 1374 行又直接调了一次 —— 每个子任务被执行两遍（双份 token 花费、
+            # 代码与几何命令重复回传）。总线路径产出的 TASK_RESULT 全仓没有任何订阅者，
+            # 所以真正的执行路径是下面的直调；总线上行降级为 NOTIFICATION（只记日志）。
             if self._message_bus:
                 from mathlab.core.agent_message import MessageType
 
                 self.send_message(
                     receiver_id=agent_key,
-                    msg_type=MessageType.TASK_REQUEST,
-                    content=sub_prompt,
+                    msg_type=MessageType.NOTIFICATION,
+                    content=f"[Step {num}] 计划派发: {title} -> {agent_name}",
                     step_num=num,
                     cognitive_level=cognitive_level,
                     topic=topic,

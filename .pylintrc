@@ -1,13 +1,14 @@
 [MASTER]
 init-hook=
+
+[MESSAGES CONTROL]
+# 原先 [MASTER] 与 [MESSAGES CONTROL] 各写了一个 disable=，同名键后者覆盖前者，
+# 导致第一组（缺失 docstring / 重复代码）实际上从未生效。合并到唯一的规范段。
 disable=
     C0114,
     C0115,
     C0116,
     R0801,
-
-[MESSAGES CONTROL]
-disable=
     W0703,
     R0903,
     R0913,
@@ -20,12 +21,21 @@ disable=
 reports=no
 
 [TYPECHECK]
-ignored-modules=PyQt6,
-                 PyQt6.QtWidgets,
-                 PyQt6.QtGui,
-                 PyQt6.QtCore,
-                 PyQt6.QtCharts,
-                 PyQt6.QtSvg,
+# ignored-modules 必须与本项目实际使用的 GUI 绑定一致。
+# 原配置写的是 PyQt6.* —— 本仓库用的是 PySide6，那份名单从未生效过，
+# 结果是 pylint 对 Qt 的 C++ 后端属性报出一堆 no-member 噪声。
+# 另外把可选运行时依赖（pythonnet 的 clr/System、torch）也列进来：
+# 它们缺失时属于正常降级，不该算 import-error。
+ignored-modules=PySide6,
+                 PySide6.QtWidgets,
+                 PySide6.QtGui,
+                 PySide6.QtCore,
+                 PySide6.QtWebEngineWidgets,
+                 PySide6.QtWebEngineCore,
+                 PySide6.QtWebChannel,
+                 clr,
+                 System,
+                 torch,
                  numpy,
                  scipy,
                  matplotlib,

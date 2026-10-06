@@ -345,10 +345,10 @@ jobs:
             --diff
 
   # ────────────────────────────────────────────────────────────────────────
-  # Job 8: UI 样式防回潮 (ui-style-guard — UI_SYSTEM_DESIGN.md §7.3)
+  # Job 8: UI 样式与 i18n 防回潮 (ui-style-guard — UI_SYSTEM_DESIGN.md §7.3)
   # ────────────────────────────────────────────────────────────────────────
   ui-style-guard:
-    name: UI Style Guard (S1 inline / S2 hex / S3 actions)
+    name: UI Style & i18n Guard (S1/S2/S3 + I1/I3)
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -368,6 +368,13 @@ jobs:
         run: |
           echo "🔍 正在检查 UI 内联样式与未连接 QAction..."
           python mathlab/scripts/check_ui_style.py
+
+      # i18n 守卫（I1 key 缺失 / I3 未走 t() 的裸中文棘轮）。
+      # 该脚本早已存在但从未接入 CI，导致 300+ 处硬编码文案无人拦截。
+      - name: Run i18n guard
+        run: |
+          echo "🔍 正在检查 i18n 覆盖与未本地化文案..."
+          python mathlab/scripts/check_i18n.py
 
   # ────────────────────────────────────────────────────────────────────────
   # Job 9: 汇总报告

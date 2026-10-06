@@ -3,7 +3,11 @@ name: Auto Release
 on:
   push:
     tags:
-      - 'v[0-9]+.[0-9]+.[0-9]+'  # 仅匹配语义化版本标签
+      # GitHub Actions 的 tags 过滤器是 glob（@actions/glob），不是正则：
+      # '[0-9]' 字符类可以用，但 '+' 是字面字符，所以旧写法
+      # 'v[0-9]+.[0-9]+.[0-9]+' 匹配不到任何 tag —— 发布流水线其实从未被 tag 触发过。
+      - 'v*.*.*'
+      - '!v*-*'  # 排除 v1.0.0-rc1 这类预发布标签
   workflow_dispatch:
     inputs:
       skip-cache:
@@ -87,7 +91,11 @@ jobs:
         run: |
           cd mathlab/resources/web_src
           npm ci
-          npm run build
+          # build:all = webpack + webpack.omni.config.js
+          # resources/dist/ 与 *.bundle.js 被 .gitignore 排除，而 monaco.html / omni_bar.html
+          # 直接引用 ./dist/*.bundle.js；只跑 `npm run build` 会漏掉 omni_bar.bundle.js，
+          # 使发布包里的命令面板（OmniBar）永远是空白页。
+          npm run build:all
 
       - name: Install dependencies & PyInstaller
         run: |
@@ -96,6 +104,13 @@ jobs:
           pip install pyinstaller
 
       # ── 智能打包：有缓存时增量，无缓存或手动触发时完整 ──────────────────
+      - name: Purge stale dist output
+        shell: bash
+        run: |
+          # dist/ 不在 Git 里，但 actions/cache 只缓存 build/；
+          # 残留的旧 dist/MathLab（可能带 crash.log、logs/ 等运行产物）会被安装包直接收走。
+          rm -rf dist/MathLab dist/MathLab-*.exe
+          echo "已清理 dist/"
       - name: Build with PyInstaller
         env:
           CACHE_HIT: ${{ steps.cache-pyinstaller.outputs.cache-hit }}

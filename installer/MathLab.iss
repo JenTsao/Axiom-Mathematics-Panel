@@ -18,7 +18,8 @@
 #define MyAppName "MathLab"
 #define MyAppExeName "MathLab.exe"
 #define MyAppPublisher "jencao"
-#define MyAppURL "https://github.com/jencaoking/Axiom-Mathematics-Panel"
+; 必须与 git remote 一致（原值写的是 jencaoking，点击"关于"里的网址会 404）
+#define MyAppURL "https://github.com/JenTsao/Axiom-Mathematics-Panel"
 
 [Setup]
 ; AppId 固定不变：同一 AppId 的重新安装会被识别为升级而非并存安装
@@ -58,7 +59,9 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; \
 
 [Files]
 ; PyInstaller ONEDIR 全量产物（MathLab.exe + _internal\）
-Source: "..\dist\MathLab\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
+; Excludes：dist\ 可能被本地旧的运行残留污染（曾出现过 7 月的 crash.log 与 logs\ 被打进安装包），
+; 按文件名排除所有日志类文件；纯源码构建时 dist\ 里本不该有 *.log。
+Source: "..\dist\MathLab\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion; Excludes: "*.log,crash.log"
 ; CASAL 许可证随安装目录分发（许可证 §2.2 / §7 要求保留全文）
 Source: "..\LICENSE"; DestDir: "{app}"; DestName: "LICENSE"; Flags: ignoreversion
 

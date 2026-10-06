@@ -17,11 +17,32 @@ added_files = [
     # ('mathlab/resources/icon.ico', 'mathlab/resources'),
 ]
 # 收集 rfc3987_syntax 包的数据文件（.lark 语法文件）
-import rfc3987_syntax
+# [P0 发布链修复] 原实现无条件 `import rfc3987_syntax`，但它是 jsonschema 的可选传递依赖，
+# 没有出现在 requirements.txt 里 —— 干净环境执行 pyinstaller 会直接 ModuleNotFoundError。
 import os
-rfc3987_syntax_dir = os.path.dirname(rfc3987_syntax.__file__)
-added_files += [(os.path.join(rfc3987_syntax_dir, 'syntax_rfc3987.lark'), 'rfc3987_syntax')]
-added_files += copy_metadata('jupyter_client')
+
+try:
+    import rfc3987_syntax
+
+    rfc3987_syntax_dir = os.path.dirname(rfc3987_syntax.__file__)
+    added_files += [(os.path.join(rfc3987_syntax_dir, 'syntax_rfc3987.lark'), 'rfc3987_syntax')]
+except ImportError:
+    print('rfc3987_syntax 未安装，跳过其 .lark 语法文件收集')
+
+# [P0 发布链修复] 内嵌 JupyterLab 需要它的静态前端资源（HTML/JS/CSS）。
+# 缺这段时打包出的发行包里 Jupyter 标签页只有后端没有界面；
+# build_spec.spec 早已收集，CI 用的这份根 spec 一直没同步。
+for _pkg in ('jupyterlab', 'jupyterlab_server', 'notebook', 'ipykernel', 'jupyter_server'):
+    try:
+        added_files += collect_data_files(_pkg)
+    except Exception as _exc:  # 可选依赖缺失不应该让构建整体失败
+        print('collect_data_files(%s) 跳过: %s' % (_pkg, _exc))
+
+for _pkg in ('jupyter_client', 'jupyterlab', 'jupyter_server'):
+    try:
+        added_files += copy_metadata(_pkg)
+    except Exception as _exc:
+        print('copy_metadata(%s) 跳过: %s' % (_pkg, _exc))
 
 # 2. 隐式依赖声明：强制打包动态加载的引擎和代理
 hidden_imports = [

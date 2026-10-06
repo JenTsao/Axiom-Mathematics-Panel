@@ -83,3 +83,19 @@ mathlab/resources/dist/
 *.bundle.js
 
 .workbuddy
+
+# ── 运行时产物（应用自己写的目录，此前未忽略，一次 git add -A 就会污染仓库）──
+mathlab/webcache/
+mathlab/autosave/
+mathlab/logs/
+mathlab/dist/
+mathlab/crash.log
+scratch/
+
+# ── 工具/CI 扫描产物，不应入库 ──
+test-results/
+bandit-report.json
+PROJECT_ANALYSIS.html
+MathLab_项目分析报告.docx
+# 内嵌 Jupyter 测试在本目录写出的探针笔记本
+p0_probe.ipynb

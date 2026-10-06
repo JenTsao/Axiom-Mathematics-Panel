@@ -16,6 +16,11 @@ pythonnet
 markdown
 Pygments
 jedi
+# T-1 修复：这两个是本仓库的运行必需依赖，此前只写在 mathlab/requirements.txt 与
+# setup.py 里，CI 按根清单安装 → core/algo_animator.py 的 networkx 分支在 CI 上恒不生效
+# （6 个图算法用例静默 skip），沙箱的内存监控也一直走降级路径。
+networkx>=3.1
+psutil>=5.9
 
 # ── Testing ──
 pytest>=7.4

@@ -74,7 +74,9 @@ jobs:
         run: |
           cd mathlab/resources/web_src
           npm ci
-          npm run build
+          # build:all 才会同时产出 monaco.bundle.js 与 omni_bar.bundle.js；
+          # resources/dist 被 .gitignore 排除，只跑 build 会让 OmniBar 在 CI 产物里空白
+          npm run build:all
 
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b # v5.3.0
@@ -102,6 +104,16 @@ jobs:
       - name: Run unit tests (Linux)
         if: runner.os == 'Linux'
         run: xvfb-run --auto-servernum pytest mathlab/tests/unit/ -v --tb=long -m "not slow" --junitxml=test-results/unit-results.xml --cov=mathlab --cov-report=xml --cov-report=term-missing --cov-branch
+
+      # mathlab/tests/ 顶层的 65 个用例此前 CI 从不执行（三个 Job 只点名子目录），
+      # 其中包括分层架构断言 test_architecture_refactor.py —— 恰恰是最该在 CI 兜住的那类。
+      - name: Run root-level tests (Windows / macOS)
+        if: runner.os != 'Linux'
+        run: pytest mathlab/tests/ --ignore=mathlab/tests/unit --ignore=mathlab/tests/integration --ignore=mathlab/tests/e2e -v --tb=long -m "not slow" --junitxml=test-results/root-results.xml --cov=mathlab --cov-append --cov-report=xml --cov-report=term-missing
+
+      - name: Run root-level tests (Linux)
+        if: runner.os == 'Linux'
+        run: xvfb-run --auto-servernum pytest mathlab/tests/ --ignore=mathlab/tests/unit --ignore=mathlab/tests/integration --ignore=mathlab/tests/e2e -v --tb=long -m "not slow" --junitxml=test-results/root-results.xml --cov=mathlab --cov-append --cov-report=xml --cov-report=term-missing
 
       - name: Run integration tests (Windows / macOS)
         if: runner.os != 'Linux'

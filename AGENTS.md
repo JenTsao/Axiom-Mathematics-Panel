@@ -34,7 +34,8 @@
 | .NET 桥接 | pythonnet | `>=3.0` | C# 加速内核（缺失自动降级） |
 | 测试 | pytest / pytest-qt / pytest-cov | `>=7.4` / `>=4.4` / `>=4.1` | 分层测试 |
 
-> `networkx` / `psutil` 在根 `requirements.txt` 中未列出但为运行必需 → 见 §10 技术债 T-1。
+> `networkx` / `psutil` 为运行必需，三份清单（根 `requirements.txt`、`mathlab/requirements.txt`、`setup.py`）
+> 必须保持同步；根清单此前缺这两项（§10 T-1，已修复）。
 
 ---
 
@@ -385,8 +386,21 @@ QTimer.singleShot(0, self._deferred_init)   # AI 集成 / ECharts 绑定 / REPL 
    放宽前必须走安全评审并同步更新 `mathlab/docs/sandbox_security_refactor.md`。
 3. **敏感信息**：`mathlab/settings.json` 含 `ai_api_key` 字段且被 Git 跟踪——**提交前确认其为空字符串**。
    禁止把 API Key、令牌、个人路径写入代码、文档或测试夹具。
+   注意：跑测试会把运行期默认键（如 `enable_undo`）写进这个文件，提交前用 `git diff mathlab/settings.json` 检查，别把无关变更一起提交。
 4. **bandit**：`-ll` 仅拦截中高危；新增 `# nosec` 必须注释理由。
-5. 依赖漏洞检查：`safety check --file=requirements.txt`（CI Job）。
+   `# nosec` 必须写在**被报告的那一行**上（行尾），放上一行不生效。
+5. **表达式解析只能走 `mathlab/core/expression_guard.py`**。
+   不要对不受信的表达式字符串调用 `sympy.sympify()` / `parse_expr()`：
+   sympy 在 `global_dict=None` 时会主动把 `builtins` 注入求值命名空间，
+   `"__import__('os').getpid()"` 与 `x.__class__` 都会被真的解析出来（`.mathlab` 工程文件里的
+   `expression` 字段就走这条路，构成"打开即 RCE"）。用 `safe_parse_expr` / `safe_sympify`。
+   另：`parse_expr` 会**回写**传入的 `global_dict`（塞进 `__builtins__`），
+   所以受限命名空间必须每次返回新字典，不能 `lru_cache` 一个可变 dict。
+6. **沙箱有父子两道扫描**：父进程 `SandboxProcess.run_code()` 先用
+   `sandbox_security.is_code_safe` 拦，子进程 `sandbox_script.py` 内再留一份同规则副本
+   （子进程不保证能 `import mathlab`，所以规则是刻意重复的）。
+   改任一侧都要同步另一侧，只放宽一边等于没拦。
+7. 依赖漏洞检查：`safety check --file=requirements.txt`（CI Job）。
 
 ---
 
@@ -414,7 +428,7 @@ QTimer.singleShot(0, self._deferred_init)   # AI 集成 / ECharts 绑定 / REPL 
 
 | ID | 位置 | 问题 | 处理建议 |
 | :--- | :--- | :--- | :--- |
-| T-1 | 根 `requirements.txt` | 缺少 `networkx>=3.1`、`psutil>=5.9`（`mathlab/requirements.txt` 与 `setup.py` 中均有） | 新增根依赖时同步两侧清单 |
+| T-1 | 根 `requirements.txt` | ✅ 已修复：`networkx>=3.1`、`psutil>=5.9` 已补入根清单。此前 CI 按根清单安装，导致 `core/algo_animator.py` 的 networkx 分支在 CI 恒不生效（6 个图算法用例静默 skip）、沙箱内存监控一直走降级 | 新增根依赖时仍需同步 `mathlab/requirements.txt` 与 `setup.py` 三份清单 |
 | T-2 | 主题加载链路 | 三处互相覆盖：① `main.py` 读 `styles.qss` → `app.setStyleSheet`；② `theme_manager.set_theme()` 内联 QSS → `app.setStyleSheet`（整体覆盖 ①）；③ `_mixin_ui_setup.load_stylesheet()` → `self.setStyleSheet(qss)`（窗口级，优先级最高）。且 ③ 中的 `qss.replace("#13131A", …)` 等旧色值在当前 `styles.qss`（Slate 色板 `#0F172A` / `#1E293B` / `#334155` / `#475569` / `#22C55E`）中**已不存在**，替换静默失效 | 按 §5.1 收敛为“模板 + 一次渲染 + 一次 `app.setStyleSheet`”；删除 `load_stylesheet()` 的 replace 逻辑 |
 | T-3 | `mathlab/ui/styles.qss`（107 行） | ① 裸 `QWidget` 全局背景规则污染子控件；② 缺少 `QMenuBar` / `QMenu` / `QToolBar` / `QStatusBar` / `QTreeWidget` / `QListWidget` / `QSplitter` / `QGroupBox` / `QCheckBox` / `QRadioButton` / `QToolTip` / `QProgressBar` 等控件样式 | 按 §5.2 补全并改为具名选择器 |
 | T-4 | `main_window.py:71` | `self.setGeometry(100, 100, 1200, 800)` 硬编码，全仓库 `QSettings` 使用数为 **0** | 改用 `QSettings` 持久化 `geometry()` + `saveState()`（§5.3） |
@@ -439,7 +453,8 @@ QTimer.singleShot(0, self._deferred_init)   # AI 集成 / ECharts 绑定 / REPL 
 | 写插件 | `mathlab/core/plugin_base.py`、`core/extension_api.py`、`plugins/<id>/main.py` |
 | 加文案 | `mathlab/locale/zh.json` + `en.json`（双语同步） |
 | 加配置项 | `mathlab/utils/config_manager.py::_DEFAULT_CONFIG` |
-| 改沙箱 | `mathlab/core/sandbox_security.py`（**不得放宽**） |
+| 改沙箱 | `mathlab/core/sandbox_security.py`（**不得放宽**）+ `core/sandbox_script.py`（子进程同规则副本，改一处必须同步） |
+| 解析表达式字符串 | `mathlab/core/expression_guard.py`（`safe_parse_expr` / `safe_sympify`，**禁止**直接用 sympy 的 `sympify`/`parse_expr`） |
 | 加异步任务 | `mathlab/core/async_workers.py`（`QRunnable` + `QThreadPool`） |
 | 排查启动崩溃 | `mathlab/crash.log`、`mathlab/mathlab.log`、`main.py::_write_crash_log` |
 | 查 API | `mathlab/docs/api.md`、`docs/user_guide.md` |

@@ -11,7 +11,8 @@
      ``.triggered.connect`` 或 ``setEnabled(False)``
 
 阈值策略（R-3）：分三档推进 173/411（基线软阈值）→ 98/253（B1 完成）→
-20/40（B3 完成）。当前处于 B1 完成档。
+20/40（B3 完成）。阈值取**当前实测值**而非"实测值 + 余量"，任何新增内联样式
+或硬编码色值都会立刻变红；收敛时把数字改小即可。
 """
 
 from __future__ import annotations
@@ -22,12 +23,12 @@ import re
 import sys
 from pathlib import Path
 
-# ── 阈值（随批次调低；完成 B3 后改为 20 / 40 / 0） ─────────────────────────
+# ── 阈值（棘轮：只许下调，不许上调）─────────────────────────────────────────
+# 取值必须等于当前实测值。此前设的是"实测值 + 余量"（103/264），
+# 后果是新增内联样式可以一路混到余量用完，守卫形同放行。
 THRESHOLDS: dict[str, int] = {
-    # B1 完成档实测值（设计预估 98/253，实测 B1 后余量 103/264 — 余量全部
-    # 位于 B2/B3 文件，见 --report 明细）。B2 完成后调至 64/181，B3 后 20/40。
-    "inline": 103,  # 基线 173
-    "hex": 264,  # 基线 411
+    "inline": 103,  # 基线 173 → B1 实测 103
+    "hex": 263,  # 基线 411 → B1 实测 263
     "unconnected_actions": 0,  # S3：未连接 QAction（A-07 目标 0）
 }
 
@@ -164,6 +165,12 @@ def main() -> int:
     parser.add_argument("--report", action="store_true", help="输出 Markdown 明细报告")
     args = parser.parse_args()
 
+    # Windows 控制台默认 GBK：中文与 emoji 会 UnicodeEncodeError 直接崩，
+    # 表现为一次与代码质量无关的"假失败"（本地跑必 exit 1）。
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="replace")
+
     files = _iter_ui_python_files()
     s1, s1_files = check_s1_inline(files)
     s2, s2_files = check_s2_hex(files)
@@ -190,9 +197,9 @@ def main() -> int:
     )
     if failures:
         for failure in failures:
-            print(f"❌ {failure}")
+            print(f"[FAIL] {failure}")
         return 1
-    print("✅ UI 样式检查通过")
+    print("[OK] UI 样式检查通过")
     return 0
 
 
