@@ -16,7 +16,6 @@
 """
 
 import json
-import os
 import sys
 import urllib.error
 import urllib.request
@@ -413,32 +412,58 @@ class TestJupyterManagerHardening:
         assert "token" in str(seen["headers"].get("Authorization", ""))
 
 
+def _lab_available() -> bool:
+    """花几秒确认 ``jupyter lab`` 子命令真的可用。
+
+    ``jupyterlab`` 包能被 import，不代表 ``jupyter-lab`` 入口点已注册
+    （本机就是这种状态：打印 "Jupyter command \`jupyter-lab\` not found"）。
+    少了这一步，夹具会白等满整个启动超时。
+    """
+    import subprocess
+
+    try:
+        proc = subprocess.run(  # nosec B603 - 固定 argv，只查版本号
+            [sys.executable, "-m", "jupyter", "lab", "--version"],
+            capture_output=True,
+            timeout=20,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return proc.returncode == 0
+
+
+@pytest.fixture(scope="class")
+def server():
+    """真起一次内嵌服务；环境不具备条件时快速 skip，而不是空等超时。
+
+    定义在模块级：类作用域夹具写成实例方法时，pytest 会告警
+    "实例属性对测试方法不可见"（每个用例是新实例）。
+    """
+    import mathlab.core.jupyter_manager as jm
+
+    try:
+        import jupyterlab  # noqa: F401
+    except ImportError:
+        pytest.skip("未安装 jupyterlab")
+
+    if not _lab_available():
+        pytest.skip("该环境未注册 jupyter-lab 子命令，无法做真实服务验证")
+
+    mgr = jm.JupyterManager()
+    if not mgr.start(timeout=45):
+        mgr.stop()
+        pytest.skip("JupyterLab 服务未能启动")
+    yield mgr
+    mgr.stop()
+
+
 @pytest.mark.integration
 @pytest.mark.slow
 class TestJupyterServerAuthReal:
     """真起一次 Jupyter 服务，确认收紧后既挡住外部请求、又不破坏合法流程。
 
-    标 slow：需要拉起完整 JupyterLab 进程（十几秒）。
+    标 slow：需要拉起完整 JupyterLab 进程。
     """
-
-    @pytest.fixture(scope="class")
-    def server(self):
-        import mathlab.core.jupyter_manager as jm
-
-        if not os.path.exists(os.path.dirname(sys.executable)):
-            pytest.skip("环境缺少可执行的 python")
-        try:
-            import jupyterlab  # noqa: F401
-        except ImportError:
-            pytest.skip("未安装 jupyterlab")
-
-        mgr = jm.JupyterManager()
-        started = mgr.start(timeout=120)
-        if not started:
-            mgr.stop()
-            pytest.skip("JupyterLab 服务未能启动")
-        yield mgr
-        mgr.stop()
 
     def _base(self, mgr):
         return "http://127.0.0.1:%d" % mgr.port

@@ -159,6 +159,15 @@ class ImplicitPlot(GeometricObject):
             # ── 全 numpy 等值线提取（零 Python 循环）────────────────────────────
             # 步骤 1：找出存在符号变化的网格单元（零点穿越 → 轮廓线经过的单元）
             Z_fin = np.where(np.isfinite(Z), Z, np.nan)
+
+            # 表达式求不了值时（上面的 except 分支）整张网格都是 NaN。
+            # 直接判定为空：否则 np.nanmax 会抛 All-NaN RuntimeWarning，
+            # 并把 near_zero_tol 变成 NaN，后面靠 max() 也救不回来。
+            if Z_fin.size == 0 or np.all(np.isnan(Z_fin)):
+                self.points_data = []
+                self.coordinates = {"points": []}
+                return
+
             # 四个角点的切片（左上、右上、右下、左下）
             tl = Z_fin[:-1, :-1]
             tr = Z_fin[:-1, 1:]
