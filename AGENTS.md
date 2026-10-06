@@ -9,8 +9,9 @@
 | 版本 | `3.8.0`（`mathlab/utils/version.py`） |
 | 类型 | PySide6 (Qt for Python) 跨平台桌面应用 |
 | Python | 3.10 – 3.12（CI 矩阵）；`mypy.ini` 固定 `python_version = 3.11` |
-| 许可证 | CASAL v4.0（源可用，禁止 AI/ML 训练；见 §8） |
-| 规模 | `mathlab/` 152 个 `.py` / 约 3.66 万行；其中 `ui/` 39 个模块 / 约 1.33 万行 |
+| 许可证 | CASAL v1.0（`LICENSE` 正文标题即 v1.0，2026-07-21；源可用，禁止 AI/ML 训练；见 §8） |
+| 规模 | `mathlab/` 166 个 `.py` / 约 4.05 万行（不含 `resources/`）；其中 `ui/` 42 个模块 / 1.37 万行、`core/` 57 个 / 1.41 万行 |
+| 测试 | 616 条用例（29 个 `test_*.py`）；日常快速回归跑 606 条（排除 `slow` / `e2e`） |
 
 一句话定位：**在同一窗口内融合几何 DAG 引擎、符号/数值计算、内嵌 JupyterLab、AI 多智能体与插件生态的交互式数学工作台。**
 
@@ -45,17 +46,17 @@
 Axiom Mathematics Panel/
 ├── mathlab/                        # 主包
 │   ├── main.py                     # 入口：日志→异常钩子→QApplication→MainWindow
-│   ├── ui/           (39)          # 界面层：窗口、面板、画布、样式
-│   ├── core/         (55)          # 核心层：几何 DAG / CAS / AI / 沙箱 / 插件 / Jupyter
-│   ├── utils/        (9)           # 工具层：logger / config / i18n / theme / latex / markdown / version
+│   ├── ui/           (42)          # 界面层：窗口、面板、画布、样式
+│   ├── core/         (57)          # 核心层：几何 DAG / CAS / AI / 沙箱 / 插件 / Jupyter
+│   ├── utils/        (10)          # 工具层：logger / config / i18n / theme / theme_tokens / latex / markdown / version
 │   ├── data/         (3)           # 数据层：project.py、file_manager.py
 │   ├── plugins/      (5 内置)      # 每个插件 = 一个含 main.py 的目录
-│   ├── config/                     # ai_providers.json、prompts.yaml、ai_tools_schema.py
+│   ├── config/                     # prompts.yaml（生效）；ai_providers.json、ai_tools_schema.py 当前无代码读取
 │   ├── locale/                     # zh.json / en.json（i18n 唯一数据源）
 │   ├── resources/                  # HTML / 图标 / monaco / web_src（前端产物）
-│   ├── docs/         (8 篇)        # api.md、user_guide.md、function_explorer_guide.md …
-│   ├── tests/                      # unit(18) / integration(2) / e2e(1) + 顶层 2
-│   ├── scripts/                    # update_i18n.py（辅助脚本）
+│   ├── docs/         (10 篇)       # api.md、user_guide.md、function_explorer_guide.md …
+│   ├── tests/                      # unit(24) / integration(2) / e2e(1) + 顶层 2
+│   ├── scripts/                    # check_i18n.py / check_ui_style.py（CI 守卫）/ update_i18n.py
 │   ├── settings.json               # 运行时配置（含 ai_api_key 字段，见 §8）
 │   ├── build_spec.spec             # PyInstaller 完整版（含 JupyterLab 资源）
 │   └── requirements.txt            # 打包用依赖清单
@@ -264,29 +265,33 @@ def _init_engines(self):
 
 ### 5.1 主题系统唯一真源（Single Source of Truth）
 
-**权威来源只有一个：`mathlab/utils/theme_manager.py::THEMES`**（`light` / `dark` / `sepia`，每个主题 16 个键 = `name` + 15 个色键：
-`background` `foreground` `panel_bg` `panel_border` `accent` `secondary` `success` `warning` `error`
-`console_bg` `console_fg` `point_color` `segment_color` `circle_color` `polygon_color`）。
+**权威来源是 `mathlab/utils/theme_tokens.py::THEME_TOKENS`**（`light` / `dark` / `sepia`，每主题 **31 个 token**，
+由 `validate_theme_tokens()` 保证三套键集一致）。
+`theme_manager.py::THEMES` 已降级为**派生的兼容视图**（`_derive_legacy_view()`，旧的 16 键形状），
+只为不破坏既有调用而保留 —— 新代码不要再从 `THEMES` 取色。
+
+链路现状（已收敛，非"重构方向"）：
+
+* app 级 `setStyleSheet` 全仓**只有 1 处**：`theme_manager.py:193`；`main.py` 与 `_mixin_ui_setup.load_stylesheet()`
+  的注入已删除，`load_stylesheet()` 本身连同 `qss.replace("#13131A", …)` 那套失效逻辑一起消失了。
+* `styles.qss` 是**模板**（735 行、**0 个硬编码 HEX**、185 个 `${token}` 占位符），由 `render_qss()` 渲染一次后注入。
+* `set_theme()` 的顺序：accent 覆写 → `QPalette` → 渲染 → 注入 → 持久化 → 发信号。
 
 规则：
 
-1. **应用级 `setStyleSheet` 只允许出现一次**，即在 `theme_manager.set_theme()` 内。
-2. **禁止**在 QSS 里硬编码色值后再用 Python 字符串 `replace()` 做主题切换——这是当前 `load_stylesheet()` 的做法，已失效（见 §10 T-2）。
-3. 取色一律用 `get_theme_colors()` / `get_current_theme()`，**禁止**在 UI 代码中写 `#RRGGBB` 字面量（画板几何色可从 `point_color` / `segment_color` / `circle_color` / `polygon_color` 取）。
-4. 目标形态（重构方向）：`styles.qss` 作为**唯一模板**，以占位符书写，`set_theme()` 内渲染一次后：
-
-   ```python
-   rendered = Template(qss_template).substitute(THEMES[theme_name])
-   app.setStyleSheet(rendered)          # 唯一一次
-   app.setPalette(build_palette(THEMES[theme_name]))
-   ```
-
-5. 控件级微调允许 `widget.setStyleSheet(...)`，但**必须**带 `#objectName` 或具体类选择器前缀，且不得覆盖主题色之外的布局属性。
+1. **应用级 `setStyleSheet` 只允许出现一次**，即 `theme_manager.set_theme()` 内。
+2. 取色一律用 `get_theme_colors()` / `get_tokens()` / `get_current_theme()`；新增色值必须先加进
+   `THEME_TOKENS` 的**三个主题**，再在 QSS 里引用，不允许只加单主题。
+3. UI 代码中写 `#RRGGBB` 仍属违规，但**现状未清零**：Python 侧实测 103 处 `setStyleSheet(` / 263 处硬编码色值。
+   这条由 `mathlab/scripts/check_ui_style.py` 以**棘轮阈值**（阈值 == 实测值，只许降不许升）拦新增，
+   收敛时把 `THRESHOLDS` 的数字改小即可，不要放宽容差。
+4. 控件级微调允许 `widget.setStyleSheet(...)`，但**必须**带 `#objectName` 或具体类选择器前缀，
+   且不得覆盖主题色之外的布局属性。
 
 ### 5.2 QSS 编写规范
 
-* **禁止裸 `QWidget { … }` 全局规则**（会级联污染所有子控件，含 WebEngine 容器）。当前 `styles.qss` 第 6 行的
-  `QMainWindow, QDialog, QWidget { background-color: … }` 即为反例；改为 `QMainWindow#MainWindow` 或具名容器。
+* **禁止裸 `QWidget { … }` 全局规则**（会级联污染所有子控件，含 WebEngine 容器）。
+  当前 `styles.qss` 顶层是具名的 `QMainWindow, QDialog`，没有裸 `QWidget` —— 改回去就是引入回归。
 * **禁止** `QDockWidget > QWidget` 这类会命中 dock 内部任意子控件的选择器。
 * 选择器必须覆盖完整控件集，至少包含：
   `QMenuBar` `QMenu` `QMenu::item` `QToolBar` `QStatusBar` `QDockWidget` `QDockWidget::title`
@@ -295,19 +300,18 @@ def _init_engines(self):
   `QPushButton`（`:hover` / `:pressed` / `:disabled`）`QLineEdit` `QPlainTextEdit` `QTextBrowser`
   `QComboBox` `QComboBox QAbstractItemView` `QSpinBox` `QLabel`。
 * **三主题必须同时可用**：修改 QSS 后必须在 `light` / `dark` / `sepia` 三套下逐一验证（`set_theme()` 会同时刷新 `QPalette`）。
-* 新增色值 → 先加到 `THEMES`（三主题各一份），再在 QSS 中引用；不允许只加单主题。
-* 修改 `styles.qss` 后需同步确认 `main.py` 与 `load_stylesheet()` 的加载链路（§10 T-2）。
+* 新增色值 → 先加到 `THEME_TOKENS`（三主题各一份），再在 QSS 中用 `${token}` 引用；不允许只加单主题。
+* `styles.qss` 的加载链路只有 `theme_manager.set_theme()` 一处，**不要**再新增第二处 app 级或窗口级注入（§10 T-2 已闭环，别把它改回来）。
 
 ### 5.3 面板 / Dock 规范
 
-| 项 | 约定 |
-| :--- | :--- |
-| 标题 | 必须 `t("<namespace>.title")`；**禁止** `.upper()` 强制大写（中文无大小写语义，且破坏英文可读性） |
-| objectName | 每个 `QDockWidget` 必须 `setObjectName("dock_<name>")`——几何/状态持久化的主键 |
-| 显隐持久化 | 用 `QSettings("MathLab", "MainWindow")` 保存 `geometry()`、`saveState()` 与各 dock `visible`；在 `closeEvent` 写入、`__init__` 末尾恢复（首次启动回落默认值） |
-| 默认可见性 | 核心面板（代数 / 属性 / 控制台）默认可见；重型面板（函数探索器 / 算法可视化 / AI 工具）默认 `hide()`，首次使用时再构造或 `raise_()` |
-| 动态面板 | `UISetupMixin.add_dynamic_panel()`（供 `MathLabAPI.add_sidebar_panel` 调用），同样需要本地化标题与 objectName |
-| 中央区 | `central_tabs`（`QTabWidget`）：标签顺序为 Notebook / 几何画布 / Mini GeoGebra / Jupyter；新增标签页需评估是否应成为默认页 |
+| 项 | 约定 | 现状与例外 |
+| :--- | :--- | :--- |
+| 标题 | 必须 `t("<namespace>.title")`；**禁止** `.upper()` 强制大写（中文无大小写语义，且破坏英文可读性） | Dock 标题已清理；面板内部区块标题仍有 `.upper()`（如 `algebra_panel.py:267,343`），属既有视觉风格，新增时不要再加 |
+| objectName | 每个 `QDockWidget` 必须 `setObjectName(...)`——几何/状态持久化的主键 | 现存 7 个静态 dock 用的是**驼峰**（`dockAlgebra` / `dockProperties` / `dockConsole` / `dockMathConsole` / `dockFunctionExplorer` / `dockAlgoVis` / `dockAITools`），而动态面板是 `dock_dynamic_<name>`（`_mixin_ui_setup.py:263`）。两套并存；`session_state` 已按现名持久化，**改名会导致用户已存的布局失效**，如需统一要连带做键迁移 |
+| 显隐持久化 | 用 `QSettings("MathLab", "MainWindow")` 保存 `geometry()`、`saveState()` 与各 dock `visible`；在 `closeEvent` 写入、`__init__` 末尾恢复 | ✅ 已实现于 `ui/session_state.py`（含 `SCHEMA_VERSION` 防脏数据）；`main_window.py` 已无硬编码 `setGeometry` |
+| 默认可见性 | 核心面板（代数 / 属性 / 控制台）默认可见 | 现状只有**函数探索器** `hide()`（`_mixin_ui_setup.py:152`）；算法可视化与 AI 工具**默认可见且即时构造**。首屏冷启动落在**几何画板**（Tab 序：画板 → Notebook → Mini GeoGebra → Jupyter） |
+| 动态面板 | `UISetupMixin.add_dynamic_panel()`（供 `MathLabAPI.add_sidebar_panel` 调用），同样需要本地化标题与 objectName | — |
 
 ### 5.4 主线程规则
 
@@ -347,7 +351,7 @@ QTimer.singleShot(0, self._deferred_init)   # AI 集成 / ECharts 绑定 / REPL 
 | 类型注解 | 公共函数签名必须注解；`mypy.ini` 中 `disallow_untyped_defs=false`，但对 `mathlab.ui.*` / `mathlab.utils.*` / `mathlab.plugins.*` 已 `ignore_errors=true`——**不要**借机放弃注解 |
 | 日志 | 一律 `from mathlab.utils.logger import get_logger` → `logger = get_logger(__name__)`；**禁止** `print()`（打包 `console=False` 时不可见）、禁止模块级 `logging.basicConfig`。异常用 `logger.error("...: %s", e, exc_info=True)` |
 | i18n | 一律 `from mathlab.utils.i18n_manager import t` → `t("namespace.key")`；**禁止硬编码中文/英文文案**。key 为点分路径，未命中时返回 key 本身 |
-| i18n 新增 | 新增 UI 面板/菜单必须**同时**在 `mathlab/locale/zh.json` 与 `en.json` 增加同名命名空间（`indent=2`、`ensure_ascii=False`）。当前 zh 371 键 / en 369 键，缺 `math_console.vars`、`math_console.workspace`（§10 T-5） |
+| i18n 新增 | 新增 UI 面板/菜单必须**同时**在 `mathlab/locale/zh.json` 与 `en.json` 增加同名命名空间（`indent=2`、`ensure_ascii=False`）。当前 `zh.json` 与 `en.json` 各 **402 叶键、完全对称**（旧缺口 T-6 已修） |
 | 命名 | 模块/函数 `snake_case`，类 `PascalCase`，常量 `UPPER_CASE`，Qt 私有槽 `_on_xxx` |
 | 文档字符串 | 公共类与方法写中文 docstring（Google 风格，`Args/Returns`）；`C0114/15/16` 已在 `.pylintrc` 关闭，不强制 |
 | 提交 | Conventional Commits：`feat(ui): …` / `fix(core): …` / `docs:` / `style:` / `refactor:` / `test:` / `chore:` |
@@ -376,10 +380,14 @@ QTimer.singleShot(0, self._deferred_init)   # AI 集成 / ECharts 绑定 / REPL 
 
 ---
 
-## 8. 安全与合规（CASAL v4.0）
+## 8. 安全与合规（CASAL v1.0）
 
-1. **许可证**：CASAL v4.0（`LICENSE`，标题写作 “Custom Advanced Source-Available License v1.0”，README 统一称 v4.0）。
+1. **许可证**：CASAL v1.0（见 `LICENSE`，标题为 “Custom Advanced Source-Available License v1.0 (CASAL v1.0)”，
+   正文标注发布于 2026-07-21）。文档与徽章此前写作 “v4.0” 属口径不一致，已统一回 `LICENSE` 的 v1.0；
+   若确要升级许可证规格，应改 `LICENSE` 本身并重新生成 `installer/LICENSE.txt`，而不是只改文档。
    **明确禁止将本仓库源码用于 AI/ML 训练**。智能体生成的代码必须保留既有版权头，不得删除/替换许可证声明。
+   ⚠️ 现状：`ui/` `core/` `data/` `plugins/` `tests/` 的源码文件**都没有**版权头，
+   “保留既有版权头”目前无从对应；新增文件若要加声明请整批统一，别只给新文件加。
 2. **沙箱**：`mathlab/core/sandbox_security.py::CodeSecurityScanner` 基于 AST 白/黑名单
    （`BANNED_MODULES` / `BANNED_FUNCTIONS` / `BANNED_ATTRIBUTES`）。
    **任何改动都不得放宽该白名单**，不得新增 `eval` / `exec` / `__import__` / `os` / `subprocess` 等豁免。
@@ -412,7 +420,9 @@ QTimer.singleShot(0, self._deferred_init)   # AI 集成 / ECharts 绑定 / REPL 
    a. 导入完整性 —— 新增/改动的模块能被 `import`；
    b. `black --check` + `isort --check-only` + `flake8`（§3.4 参数）；
    c. `pytest -m "not slow and not e2e"` 通过；
-   d. 涉及 UI 时补跑 `pytest mathlab/tests/e2e`。
+   d. 涉及 UI 时补跑 `pytest mathlab/tests/e2e`；
+   e. 质量门必须跑 §3.4 的**逐字命令**，别用 `--select=F,E9` 之类窄化子集自我安慰 ——
+      W605（docstring 里的反引号转义）就是这样本地全绿、到 CI 才变红的。
 4. **不修改构建产物与临时文件**：`dist/` `build/` `*.egg-info` `venv/` `.coverage` `test-results/`
    `mathlab.log` `crash.log` `bandit-report.json` `.mypy_cache/` `.pytest_cache/` `scratch/` `mathlab/autosave/`
    `mathlab/webcache/` `mathlab/logs/` `mathlab/dist/` `mathlab/resources/dist/`。
@@ -429,13 +439,13 @@ QTimer.singleShot(0, self._deferred_init)   # AI 集成 / ECharts 绑定 / REPL 
 | ID | 位置 | 问题 | 处理建议 |
 | :--- | :--- | :--- | :--- |
 | T-1 | 根 `requirements.txt` | ✅ 已修复：`networkx>=3.1`、`psutil>=5.9` 已补入根清单。此前 CI 按根清单安装，导致 `core/algo_animator.py` 的 networkx 分支在 CI 恒不生效（6 个图算法用例静默 skip）、沙箱内存监控一直走降级 | 新增根依赖时仍需同步 `mathlab/requirements.txt` 与 `setup.py` 三份清单 |
-| T-2 | 主题加载链路 | 三处互相覆盖：① `main.py` 读 `styles.qss` → `app.setStyleSheet`；② `theme_manager.set_theme()` 内联 QSS → `app.setStyleSheet`（整体覆盖 ①）；③ `_mixin_ui_setup.load_stylesheet()` → `self.setStyleSheet(qss)`（窗口级，优先级最高）。且 ③ 中的 `qss.replace("#13131A", …)` 等旧色值在当前 `styles.qss`（Slate 色板 `#0F172A` / `#1E293B` / `#334155` / `#475569` / `#22C55E`）中**已不存在**，替换静默失效 | 按 §5.1 收敛为“模板 + 一次渲染 + 一次 `app.setStyleSheet`”；删除 `load_stylesheet()` 的 replace 逻辑 |
-| T-3 | `mathlab/ui/styles.qss`（107 行） | ① 裸 `QWidget` 全局背景规则污染子控件；② 缺少 `QMenuBar` / `QMenu` / `QToolBar` / `QStatusBar` / `QTreeWidget` / `QListWidget` / `QSplitter` / `QGroupBox` / `QCheckBox` / `QRadioButton` / `QToolTip` / `QProgressBar` 等控件样式 | 按 §5.2 补全并改为具名选择器 |
-| T-4 | `main_window.py:71` | `self.setGeometry(100, 100, 1200, 800)` 硬编码，全仓库 `QSettings` 使用数为 **0** | 改用 `QSettings` 持久化 `geometry()` + `saveState()`（§5.3） |
-| T-5 | `_mixin_ui_setup.setup_docks()` | Dock 标题被 `.upper()` 强制大写；函数探索器 / 算法可视化 / AI 工具默认 `hide()` 且状态未持久化；中央 `QTabWidget` 首标签是 Notebook 而非几何画板 | 按 §5.3 处理 |
-| T-6 | `mathlab/locale/en.json` | 比 `zh.json` 少 `math_console.vars`、`math_console.workspace` 两个键 | 新增 key 必须双语同步（§6） |
+| T-2 | 主题加载链路 | ✅ 已闭环：app 级注入只剩 `theme_manager.py:193` 一处，`load_stylesheet()` 及其 `replace()` 逻辑已删除，`styles.qss` 改为 `${token}` 模板 + `render_qss()` 渲染一次。以下为原始记录：三处互相覆盖：① `main.py` 读 `styles.qss` → `app.setStyleSheet`；② `theme_manager.set_theme()` 内联 QSS → `app.setStyleSheet`（整体覆盖 ①）；③ `_mixin_ui_setup.load_stylesheet()` → `self.setStyleSheet(qss)`（窗口级，优先级最高）。且 ③ 中的 `qss.replace("#13131A", …)` 等旧色值在当前 `styles.qss`（Slate 色板 `#0F172A` / `#1E293B` / `#334155` / `#475569` / `#22C55E`）中**已不存在**，替换静默失效 | 按 §5.1 收敛为“模板 + 一次渲染 + 一次 `app.setStyleSheet`”；删除 `load_stylesheet()` 的 replace 逻辑 |
+| T-3 | `mathlab/ui/styles.qss`（现 735 行） | ✅ 已修：无裸 `QWidget` 规则，§5.2 要求的控件集已全覆盖，0 个硬编码 HEX（185 个 `${token}`）。以下为原始记录：① 裸 `QWidget` 全局背景规则污染子控件；② 缺少 `QMenuBar` / `QMenu` / `QToolBar` / `QStatusBar` / `QTreeWidget` / `QListWidget` / `QSplitter` / `QGroupBox` / `QCheckBox` / `QRadioButton` / `QToolTip` / `QProgressBar` 等控件样式 | 按 §5.2 补全并改为具名选择器 |
+| T-4 | `main_window.py` | ✅ 已修：`QSettings` 落地于 `ui/session_state.py`（geometry/saveState/dock visible + `SCHEMA_VERSION`），硬编码 `setGeometry` 改为按屏幕可用区居中。以下为原始记录：`self.setGeometry(100, 100, 1200, 800)` 硬编码，全仓库 `QSettings` 使用数为 **0** | 改用 `QSettings` 持久化 `geometry()` + `saveState()`（§5.3） |
+| T-5 | `_mixin_ui_setup.setup_docks()` | ⚠️ 部分修复：Tab 序已改为画板优先；dock 标题的 `.upper()` 已清（`math_console.retranslate_ui` 那处漏网刚补掉），但面板内部区块标题仍大写（`algebra_panel.py:267,343` 等）；objectName 采用驼峰而非 `dock_<name>`；算法可视化 / AI 工具改为默认可见（与旧约定相反，详见 §5.3）。以下为原始记录：Dock 标题被 `.upper()` 强制大写；函数探索器 / 算法可视化 / AI 工具默认 `hide()` 且状态未持久化；中央 `QTabWidget` 首标签是 Notebook 而非几何画板 | 按 §5.3 处理 |
+| T-6 | `mathlab/locale/en.json` | ✅ 已修：双语各 402 叶键、完全对称。以下为原始记录：比 `zh.json` 少 `math_console.vars`、`math_console.workspace` 两个键 | 新增 key 必须双语同步（§6） |
 | T-7 | `mathlab/scripts/update_i18n.py` | 内部硬编码 `j:/PROJECT/...` 绝对路径 | 不要直接运行；改为手动编辑 JSON 或先修复脚本路径 |
-| T-8 | `README.md` | 称 `main_window.py` 组合“8 个 Mixin”（实际 7 个 + `QMainWindow`）；`python -m mathlab` 无 `__main__.py` 支持 | 以本文件与源码为准 |
+| T-8 | `README.md` | ✅ 已修：Mixin 数、`python -m mathlab`、工程文件扩展名（`.mathlab` 而非 `.mlproj`）、许可证版本、以及“WebSocket 协作 / 云端同步 / 资源库 / 10 家模型接入”等未实现项均已按事实改写，README 顶部新增「📌 当前状态」表区分“可用 / 代码就绪未接线 / 不存在” | 文档继续按源码事实校验后再写 |
 
 ---
 
@@ -443,7 +453,7 @@ QTimer.singleShot(0, self._deferred_init)   # AI 集成 / ECharts 绑定 / REPL 
 
 | 我想… | 去看 |
 | :--- | :--- |
-| 改主题 / 配色 | `mathlab/utils/theme_manager.py`（`THEMES`、`set_theme`、`get_theme_colors`） |
+| 改主题 / 配色 | `mathlab/utils/theme_tokens.py`（`THEME_TOKENS`，真源）+ `theme_manager.py`（`set_theme`、`get_theme_colors`；`THEMES` 只是派生兼容视图） |
 | 改全局样式 | `mathlab/ui/styles.qss` + `theme_manager.set_theme()` |
 | 加面板 / Dock | `mathlab/ui/_mixin_ui_setup.py`（`setup_docks`、`add_dynamic_panel`） |
 | 加菜单 / 工具栏 | `mathlab/ui/_mixin_menus.py` |

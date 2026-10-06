@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://img.shields.io/badge/license-CASAL%20v4.0-blue.svg" alt="License">
+  <img src="https://img.shields.io/badge/license-CASAL%20v1.0-blue.svg" alt="License">
   <img src="https://img.shields.io/badge/python-3.10+-brightgreen.svg" alt="Python">
   <img src="https://img.shields.io/badge/PySide6-6.5+-red.svg" alt="PySide6">
   <img src="https://img.shields.io/badge/version-3.8.0-orange.svg" alt="Version">
@@ -19,8 +19,42 @@
 
 ***
 
+## 📌 当前状态
+
+> 这一节只写**可核实**的事实：哪些能力真能跑、哪些只是代码就绪但没接线、哪些其实在仓库里并不存在。
+> 想把话说准，请以这一节为准，下面的功能表与架构图是设计全景。
+
+| 能力 | 实际状态 | 依据 |
+| :--- | :--- | :--- |
+| 几何 DAG 画板（依赖传播 / 约束求解 / 轨迹） | ✅ 可用，有单元与集成测试 | `core/geometry_engine.py`、`core/models/*`，`tests/unit/test_dag.py` 等 |
+| CAS 符号计算、函数绘图、Cell 笔记本 | ✅ 可用 | `core/cas_provider.py`、`core/models/function.py`、`ui/notebook_panel.py` |
+| 子进程沙箱 + Jupyter 内核沙箱 | ✅ 可用；执行前有 AST 安全扫描（父子两道） | `core/sandbox.py`、`core/sandbox_script.py`、`core/sandbox_security.py`、`core/expression_guard.py` |
+| 多智能体调度（教研组长 → 子 Agent） | ✅ 可用（已修掉"子任务执行两遍"的缺陷） | `core/ai_manager.py::PlannerAgent`、`core/agent_message.py` |
+| C# 加速内核（含可选数值后端） | ⚠️ 部分：`num_engine` 路径有降级与测试；`cas_provider` 对 `cs_calculus` 是**无保护导入**，缺 pythonnet/.NET 时 CAS 层会报错 | `core/cas_provider.py:6`、`core/cs_*.py` |
+| 内嵌 JupyterLab | ⚠️ 依赖 `jupyter-lab` 子命令已注册；本机若只装了包而入口点缺失，服务起不来（应用会记录超时并降级） | `core/jupyter_manager.py` |
+| 主题（light/dark/sepia）、会话持久化、撤销栈 | ✅ 可用，真源是 token 表 | `utils/theme_tokens.py`、`ui/session_state.py`、`core/undo_stack.py` |
+| **10 家大模型接入** | ❌ **未接线**。`config/ai_providers.json` 与 `core/ai_provider_config.py` 全仓零引用；真正生效的只有 `settings.json` 的 `ai_api_key`/`ai_base_url`/`ai_model` + OpenAI 兼容 SDK，偏好设置里另有一份硬编码的 4 家模板 | `core/ai_manager.py:reload_config`、`ui/preferences_dialog.py` |
+| **AI Function Calling 闭环** | ⚠️ 半程。工具会被调用并显示，但 `tool_call_id` 被丢弃、结果不写回上下文，模型因此"看不到"工具产物；现有近似做法是失败后拼自然语言重问 | `core/ai_manager.py::AIEngineWorker.run`、`core/memory_manager.py::add_tool_message`（生产代码零调用） |
+| `config/ai_tools_schema.py` | ❌ 死代码，零引用（真实工具定义在 `core/ai_tools.py`） | 全仓 grep |
+| WebSocket 实时协作 / 跨设备与云端同步 / 云端资源库 / 插件市场 | ❌ **仓库中不存在**，仅在路线图规划内 | — |
+| `.mlproj` 工程文件 | ❌ 不存在，实际扩展名是 **`.mathlab`**（JSON） | `ui/_mixin_file_io.py` |
+| 统计检验（t 检验 / ANOVA / 卡方） | ❌ 无实现 | 全仓 grep |
+| `python -m mathlab` | ❌ 不可用（没有 `mathlab/__main__.py`）；请用 `python mathlab/main.py` | — |
+
+**其它已知限制**
+
+- 前端产物 `mathlab/resources/dist/*.bundle.js` 被 `.gitignore` 排除，必须先 `npm run build:all` 才能拿到 Monaco 与命令面板（OmniBar）。
+- KaTeX / marked / ECharts / three.js 走 CDN，且多数页面未开 `LocalContentCanAccessRemoteUrls`，**离线时这些区域会空白**。
+- 仓库中没有 `MainWindow` 级 e2e 用例：QtWebEngine 在 `offscreen` 下退出时段错误（exit 139），该路径目前无自动化覆盖。
+- 运行测试会写被 Git 跟踪的 `mathlab/settings.json`（追加运行期默认键），提交前记得检查这个文件。
+
+**这一版怎么验证的**：`pytest` 606 通过（不含 `slow`/`e2e`）、e2e 2 通过；black / isort / flake8 / mypy / pylint（9.62）/ bandit 全绿；安全绕过路径有专门的回归用例（`tests/unit/test_p0_security_hardening.py`）。
+
+***
+
 ## 📋 目录
 
+- [📌 当前状态](#-当前状态)
 - [🌟 核心亮点](#-核心亮点)
 - [✨ 功能特性](#-功能特性)
 - [🏗️ 系统架构](#-系统架构)
@@ -45,16 +79,16 @@
 
 ## 🌟 核心亮点
 
-MathLab 3.8 完成了六大核心维度的跃迁，打造了"自动驾驶级别"的 AI 教学基建：
+MathLab 的定位是：**同一个窗口里同时具备几何 DAG 引擎、符号/数值计算、内嵌 JupyterLab、AI 多智能体与插件生态**。
 
-| 阶段          | 能力        | 亮点                                      |
-| :---------- | :-------- | :-------------------------------------- |
-| **Phase 1** | 视觉安全掌控    | 状态栏实时监控、影子状态追踪、安全沙盒隔离                   |
-| **Phase 2** | 多智能体分工    | Swarm 架构、Transfer Protocol 智能路由、自我反思纠错  |
-| **Phase 3** | JIT 上下文组装 | 按需加载、Token 费用优化、Lost in Middle 问题解决     |
-| **Phase 4** | 思执分离双轨制   | 教研组长规划 + 授课讲师讲解，沉浸式苏格拉底教学               |
-| **Phase 5** | 自适应学习引擎   | Bloom/ZPD/UDL 认知建模，个性化教学体验              |
-| **Phase 6** | 结构化通信协议   | AgentMessage 标准格式、MessageBus 消息总线、多模式通信 |
+| 能力维度      | 具体做什么                                   |
+| :-------- | :--------------------------------------- |
+| 执行安全     | 状态栏实时监控、影子状态追踪、子进程沙箱（超时/内存/CPU 看门狗）与 Jupyter 内核沙箱双轨 |
+| 智能体分工    | 教研组长拆解规划 + 授课讲师逐步讲解，意图识别、自动路由、失败反思重试      |
+| 上下文工程    | 按需组装上下文、Token 费用优化、推理结果缓存                |
+| 认知建模     | Bloom / ZPD / UDL 学习画像，自适应难度与薄弱点回补       |
+| 结构化通信    | `AgentMessage` 统一格式 + `MessageBus` 消息总线（点对点 / 广播 / 按类型订阅） |
+| 计算纵深     | SymPy 符号 + SciPy 数值 + 可选 C# 加速内核，缺失自动降级   |
 
 ***
 
@@ -67,7 +101,7 @@ MathLab 3.8 完成了六大核心维度的跃迁，打造了"自动驾驶级别"
 | 🧊 **3D 渲染引擎**    | Three.js 可视化  | 曲面、向量场、等值面、GPU 分形                          |
 | 🧮 **CAS 符号计算**   | SymPy 封装      | 方程求解、微积分、极限、因式分解                           |
 | 📓 **交互笔记本**      | Cell 笔记本      | Markdown / 代码 / 公式 / 画板混排                  |
-| 🧠 **AI 多智能体系统**  | 10 家大模型接入     | OpenAI / Claude / Gemini / DeepSeek / Kimi / 通义千问 / 智谱 / 豆包 / MiniMax / Ollama 本地 |
+| 🧠 **AI 多智能体系统**  | OpenAI 兼容协议接入 | 任意 base_url + 模型名切换；提供商预设见下表说明（10 家清单目前**未接线**） |
 | 🔌 **Jupyter 集成** | 内嵌 JupyterLab | Python 与 Qt 双向变量同步                         |
 | ⚡ **C# 加速内核**     | pythonnet 桥接  | 几何求交 / FFT / 复数 / 数值积分 / 3D 网格；含可选数值后端（特征值·Cholesky·线性求解） |
 | 🛡️ **安全沙箱**      | 双沙箱架构       | 子进程沙箱（超时/内存/CPU 看门狗）+ Jupyter 内核沙箱（状态保持、富输出捕获）     |
@@ -107,9 +141,10 @@ MathLab 3.8 完成了六大核心维度的跃迁，打造了"自动驾驶级别"
 ├────────────────────────────────────────────────────────────────────────┤
 │                      数据与协作层 (Data Layer)                         │
 │ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐                 │
-│ │ 项目文件 │ │ 资源库   │ │ WebSocket│ │ 云端同步 │                 │
-│ │ (.mlproj)│ │(教学资源)│ │ 协作引擎 │ │(可选)    │                 │
+│ │ 项目文件 │ │ 文件索引 │ │ 自动存档 │ │ 插件目录 │                 │
+│ │ (.mathlab)│ │(FileIndex)│ │(AutoSaver)│ │          │                 │
 │ └──────────┘ └──────────┘ └──────────┘ └──────────┘                 │
+│  规划中（本仓库尚无实现）：WebSocket 实时协作 · 跨设备/云端同步 · 云端资源库  │
 └────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -338,12 +373,14 @@ pre-commit install
 ### 启动应用
 
 ```bash
-# 开发模式
+# 开发模式（标准入口）
 python mathlab/main.py
 
-# 或使用模块方式
-python -m mathlab
+# 若报 No module named 'mathlab'：main.py 只把 mathlab/ 加入 sys.path，
+# 需要 PYTHONPATH=. （PowerShell: $env:PYTHONPATH="."）或 pip install -e ./mathlab
 ```
+
+> `python -m mathlab` **不可用**：仓库里没有 `mathlab/__main__.py`。
 
 ### 快速验证
 
@@ -560,8 +597,8 @@ Axiom-Mathematics-Panel/
 │   ├── settings.json                 # 运行配置（ipc / ai / sandbox / jupyter / theme / language）
 │   ├── requirements.txt              # 打包依赖清单
 │   ├── requirements-optional.txt     # 可选依赖（sklearn / torch / onnxruntime / matplotlib / pyqtgraph）
-│   ├── config/                       # ai_providers.json（10 家提供商）/ prompts.yaml / ai_tools_schema.py
-│   ├── core/                         # 核心层（55 个模块）
+│   ├── config/                       # prompts.yaml（生效）/ ai_providers.json、ai_tools_schema.py（当前无代码读取）
+│   ├── core/                         # 核心层（57 个模块）
 │   │   ├── geometry_engine.py        # 几何内核：DAG 依赖 + Qt 信号 + 最小二乘约束求解
 │   │   ├── models/                   # 几何模型子包（base / point / line / circle / conic / function / locus / polygon / dag）
 │   │   ├── num_engine.py             # 数值内核（NumPy/SciPy，可切换 C# 后端）
@@ -570,7 +607,8 @@ Axiom-Mathematics-Panel/
 │   │   ├── cs_*_engine.py            # 6 个 C# 内核封装（geometry / calculus / fft / complex / mesh / num）
 │   │   ├── sandbox.py                # 子进程沙箱 + SandboxManager
 │   │   ├── sandbox_script.py         # 沙箱子进程入口（受限执行）
-│   │   ├── sandbox_security.py       # AST 代码安全扫描
+│   │   ├── sandbox_security.py       # AST 代码安全扫描（父子两道扫描的规则来源）
+│   ├── expression_guard.py       # 表达式解析唯一安全入口（禁直接用 sympy 的 sympify/parse_expr）
 │   │   ├── jupyter_manager.py        # JupyterLab 服务器 + JupyterSandbox（ipykernel）
 │   │   ├── ai_manager.py             # AI 管理器 + 多 Agent（Planner / Geometry / DataViz）
 │   │   ├── ai_tools.py               # LLM 工具 schema 与校验
@@ -599,7 +637,7 @@ Axiom-Mathematics-Panel/
 │   │   ├── notebook.py               # 笔记本数据模型
 │   │   └── signals.py                # Qt 信号集中定义
 │   ├── ui/                           # 界面层（39 个模块）
-│   │   ├── main_window.py            # 主窗口（组合 8 个 Mixin）
+│   │   ├── main_window.py            # 主窗口（组合 7 个 Mixin + QMainWindow）
 │   │   ├── _mixin_*.py               # 布局 / 菜单 / 信号 / 命令 / AI / 文件 / 对话框
 │   │   ├── canvas.py                 # 几何画布（网格 / 缩放 / LaTeX 渲染）
 │   │   ├── algebra_panel.py / properties_panel.py   # 代数列表与属性面板
@@ -629,7 +667,7 @@ Axiom-Mathematics-Panel/
 ├── pyproject.toml                    # pytest 与覆盖率配置
 ├── requirements.txt                  # 根依赖清单（CI 使用）
 ├── mathlab.spec                      # 根目录 PyInstaller 配置
-├── LICENSE                           # CASAL v4.0 许可证
+├── LICENSE                           # CASAL v1.0 许可证（源可用，禁止 AI/ML 训练）
 └── README.md                         # 项目说明（本文档）
 ```
 
@@ -660,8 +698,9 @@ Axiom-Mathematics-Panel/
 
 | 组件                                                | 用途           |
 | :------------------------------------------------ | :----------- |
-| OpenAI / Claude / Gemini / DeepSeek / Kimi / MiniMax / 通义千问 / 智谱 / 豆包 / Ollama（共 10 家） | 大语言模型接入（可插拔，配置见 `mathlab/config/ai_providers.json`） |
-| Function Calling                                  | 工具调用协议       |
+| OpenAI 兼容客户端（`openai` SDK）                        | 实际生效的调用路径：读 `settings.json` 的 `ai_api_key` / `ai_base_url` / `ai_model`，可指向任何 OpenAI 协议兼容网关 |
+| 提供商预设清单（OpenAI / Claude / Gemini / DeepSeek / Kimi / MiniMax / 通义千问 / 智谱 / 豆包 / Ollama，共 10 家） | `mathlab/config/ai_providers.json`。**当前无代码读取该文件**（其读取者 `core/ai_provider_config.py` 零引用），偏好设置里另有一份硬编码的 4 家模板；Claude / MiniMax 的非兼容端点在这条路径下不可用 |
+| Function Calling                                  | 工具调用协议（工具结果尚未回填进上下文，见「当前状态」） |
 | Streaming                                         | 流式响应         |
 
 ### 可选依赖（按需安装）
@@ -897,17 +936,15 @@ python -m nuitka --standalone --enable-plugin=pyside6 mathlab/main.py
 
 ### 版本历史
 
-| 版本      | 代号    | 主要特性                                         |
-| :------ | :---- | :------------------------------------------- |
-| **1.0** | -     | 基础几何画板                                       |
-| **2.0** | speed | 异步计算中枢、3D 渲染引擎、AI 集成                         |
-| **2.5** | axiom | GeoGebra 约束求解、笔记本、动画引擎、插件系统                  |
-| **2.6** | -     | JupyterLab 嵌入、UDP IPC 双向通信                   |
-| **3.0** | -     | Agentic UI、NL2Draw 自然语言作图、视觉错题本              |
-| **3.5** | -     | 多智能体架构、思执分离大纲双轨制、纠错重试环                       |
-| **3.7** | -     | C# 加速内核、函数探索器、复数面板、信号实验、GPU 分形、Skill Library |
-| **3.8** | -     | 🌟 自适应学习引擎（Bloom/ZPD/UDL）、教学法引导引擎、结构化通信协议、Calculus Tools 与 Animation Studio 插件 |
-| **3.8.x** | 维护 | C# 数值内核（FastMath）可插拔接入与自动回退、约束求解/对象序列化性能优化、笔记本与 AI Worker 等 20 余处缺陷修复、CI 全项（Black/Isort/Flake8/MyPy/Pylint/Bandit）修复 |
+当前版本 **3.8.0**（`mathlab/utils/version.py` 是唯一真源）。逐版本变更不在此累加——
+那只会让文档和代码越拖越远，请直接用：
+
+```bash
+git log --oneline
+gh release list
+```
+
+> 注意：GitHub Releases 目前停在 **v3.7.8**，3.8.0 尚未发布（`v3.8` 这个标签名不匹配发布流水线的触发规则，已修正为 glob 兼容写法）。
 
 ### 未来规划
 
@@ -960,7 +997,10 @@ python -m nuitka --standalone --enable-plugin=pyside6 mathlab/main.py
 
 ## 📄 许可证
 
-本项目采用 **Custom Advanced Source-Available License v1.0（CASAL v4.0）** 开源（源可用）许可证，版权归 **Jinpeng Cao (jencao)** 所有，发布于 2026 年 7 月 22 日。
+本项目采用 **Custom Advanced Source-Available License v1.0（CASAL v1.0）** 源可用许可证，版权归 **Jinpeng Cao (jencao)** 所有，许可证正文标注的发布日期为 **2026 年 7 月 21 日**。
+
+> ℹ️ 历史文档（含本文件旧版与 `AGENTS.md`）曾把许可证写作 "CASAL v4.0"，与 `LICENSE` 正文的版本号不一致。
+> 以 `LICENSE` 文本为准；若确需把许可证规格升到 v4.0，应改 `LICENSE` 本身并同步 `installer/LICENSE.txt`，而不是只改文档口径。
 
 > ⚠️ **重要提示**：CASAL 是一份**非 OSI 认证、源可用（source-available）的自定义许可证，与 Apache 2.0 有本质区别。它在允许查看、修改与分发源代码的同时，对**竞争性使用、**AI/ML 训练**以及**不道德应用**施加了严格限制，并包含强 Copyleft 义务。若需在闭源、商业竞争或 AI 训练场景下使用，须向版权方获取单独的商业授权。
 
