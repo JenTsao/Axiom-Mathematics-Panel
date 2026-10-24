@@ -3,7 +3,7 @@
   <img src="https://img.shields.io/badge/python-3.10+-brightgreen.svg" alt="Python">
   <img src="https://img.shields.io/badge/PySide6-6.5+-red.svg" alt="PySide6">
   <img src="https://img.shields.io/badge/version-3.8.0-orange.svg" alt="Version">
-  <img src="https://img.shields.io/badge/tests-444%20passed-brightgreen.svg" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-695%20passed-brightgreen.svg" alt="Tests">
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg" alt="Platform">
 </p>
 
@@ -33,9 +33,9 @@
 | C# 加速内核（含可选数值后端） | ✅ 导入安全：全部 `cs_*` 模块改为 try 加载 + 惰性单例 + 可用性标志，缺 pythonnet/.NET 时功能静默降级（`cas_provider` 积分降级 SciPy quad；分形 / 3D / FFT 面板禁用并记日志）。注意 `num_engine` 的 C# 路径实测慢于 SciPy，默认不启用 | `core/cs_*.py` |
 | 内嵌 JupyterLab | ⚠️ 依赖 `jupyter-lab` 子命令已注册；本机若只装了包而入口点缺失，服务起不来（应用会记录超时并降级） | `core/jupyter_manager.py` |
 | 主题（light/dark/sepia）、会话持久化、撤销栈 | ✅ 可用，真源是 token 表 | `utils/theme_tokens.py`、`ui/session_state.py`、`core/undo_stack.py` |
-| **10 家大模型接入** | ❌ **未接线**。`config/ai_providers.json` 与 `core/ai_provider_config.py` 全仓零引用；真正生效的只有 `settings.json` 的 `ai_api_key`/`ai_base_url`/`ai_model` + OpenAI 兼容 SDK，偏好设置里另有一份硬编码的 4 家模板 | `core/ai_manager.py:reload_config`、`ui/preferences_dialog.py` |
+| **10 家大模型接入** | ❌ **未接线**（原 `config/ai_providers.json` + `core/ai_provider_config.py` 零引用死代码已删除）。真正生效的只有 `settings.json` 的 `ai_api_key`/`ai_base_url`/`ai_model` + OpenAI 兼容 SDK，偏好设置里另有一份硬编码的 4 家模板 | `core/ai_manager.py:reload_config`、`ui/preferences_dialog.py` |
 | **AI Function Calling 闭环** | ⚠️ 半程。工具会被调用并显示，但 `tool_call_id` 被丢弃、结果不写回上下文，模型因此"看不到"工具产物；现有近似做法是失败后拼自然语言重问 | `core/ai_manager.py::AIEngineWorker.run`、`core/memory_manager.py::add_tool_message`（生产代码零调用） |
-| `config/ai_tools_schema.py` | ❌ 死代码，零引用（真实工具定义在 `core/ai_tools.py`） | 全仓 grep |
+| ~~`config/ai_tools_schema.py`~~ | ✅ 已删除（零引用死代码，真实工具定义在 `core/ai_tools.py`） | 全仓 grep |
 | WebSocket 实时协作 / 跨设备与云端同步 / 云端资源库 / 插件市场 | ❌ **仓库中不存在**，仅在路线图规划内 | — |
 | `.mlproj` 工程文件 | ❌ 不存在，实际扩展名是 **`.mathlab`**（JSON） | `ui/_mixin_file_io.py` |
 | 统计检验（t 检验 / ANOVA / 卡方） | ❌ 无实现 | 全仓 grep |
@@ -597,8 +597,8 @@ Axiom-Mathematics-Panel/
 │   ├── settings.json                 # 运行配置（ipc / ai / sandbox / jupyter / theme / language）
 │   ├── requirements.txt              # 打包依赖清单
 │   ├── requirements-optional.txt     # 可选依赖（sklearn / torch / onnxruntime / matplotlib / pyqtgraph）
-│   ├── config/                       # prompts.yaml（生效）/ ai_providers.json、ai_tools_schema.py（当前无代码读取）
-│   ├── core/                         # 核心层（57 个模块）
+│   ├── config/                       # prompts.yaml（生效）
+│   ├── core/                         # 核心层（59 个模块）
 │   │   ├── geometry_engine.py        # 几何内核：DAG 依赖 + Qt 信号 + 最小二乘约束求解
 │   │   ├── models/                   # 几何模型子包（base / point / line / circle / conic / function / locus / polygon / dag）
 │   │   ├── num_engine.py             # 数值内核（NumPy/SciPy，可切换 C# 后端）
@@ -656,7 +656,7 @@ Axiom-Mathematics-Panel/
 │   │   └── matrix_tools/             # 矩阵工具
 │   ├── utils/                        # 工具层（9 个模块：logger / config_manager / i18n / theme / latex_renderer / markdown_service / version 等）
 │   ├── data/                         # 数据层（project.py / file_manager.py）
-│   ├── tests/                        # 测试（unit 18 / integration 2 / e2e 1 + 顶层 2 = 23 个测试文件）
+│   ├── tests/                        # 测试（unit 27 / integration 2 / e2e 1 + 顶层 2 = 32 个测试文件）
 │   ├── locale/                       # 国际化（zh.json / en.json）
 │   ├── resources/                    # 前端资源（WebView JS/TS、图标、HTML、KaTeX）
 │   ├── docs/                         # 项目文档
@@ -699,7 +699,7 @@ Axiom-Mathematics-Panel/
 | 组件                                                | 用途           |
 | :------------------------------------------------ | :----------- |
 | OpenAI 兼容客户端（`openai` SDK）                        | 实际生效的调用路径：读 `settings.json` 的 `ai_api_key` / `ai_base_url` / `ai_model`，可指向任何 OpenAI 协议兼容网关 |
-| 提供商预设清单（OpenAI / Claude / Gemini / DeepSeek / Kimi / MiniMax / 通义千问 / 智谱 / 豆包 / Ollama，共 10 家） | `mathlab/config/ai_providers.json`。**当前无代码读取该文件**（其读取者 `core/ai_provider_config.py` 零引用），偏好设置里另有一份硬编码的 4 家模板；Claude / MiniMax 的非兼容端点在这条路径下不可用 |
+| 提供商预设清单（OpenAI / Claude / Gemini / DeepSeek / Kimi / MiniMax / 通义千问 / 智谱 / 豆包 / Ollama，共 10 家） | ~~`mathlab/config/ai_providers.json`~~（零引用死代码，连同其读取者 `core/ai_provider_config.py` 已删除）；偏好设置里另有一份硬编码的 4 家模板；Claude / MiniMax 的非兼容端点在这条路径下不可用 |
 | Function Calling                                  | 工具调用协议（工具结果尚未回填进上下文，见「当前状态」） |
 | Streaming                                         | 流式响应         |
 

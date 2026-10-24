@@ -10,8 +10,8 @@
 | 类型 | PySide6 (Qt for Python) 跨平台桌面应用 |
 | Python | 3.10 – 3.12（CI 矩阵）；`mypy.ini` 固定 `python_version = 3.11` |
 | 许可证 | CASAL v1.0（`LICENSE` 正文标题即 v1.0，2026-07-21；源可用，禁止 AI/ML 训练；见 §8） |
-| 规模 | `mathlab/` 166 个 `.py` / 约 4.05 万行（不含 `resources/`）；其中 `ui/` 42 个模块 / 1.37 万行、`core/` 57 个 / 1.41 万行 |
-| 测试 | 616 条用例（29 个 `test_*.py`）；日常快速回归跑 606 条（排除 `slow` / `e2e`） |
+| 规模 | `mathlab/` 170 个 `.py` / 约 4.30 万行（不含 `resources/`）；其中 `ui/` 42 个模块 / 1.38 万行、`core/` 59 个 / 1.53 万行 |
+| 测试 | 701 条用例（32 个 `test_*.py`）；日常快速回归跑 694 条（排除 `slow` / `e2e`） |
 
 一句话定位：**在同一窗口内融合几何 DAG 引擎、符号/数值计算、内嵌 JupyterLab、AI 多智能体与插件生态的交互式数学工作台。**
 
@@ -47,15 +47,15 @@ Axiom Mathematics Panel/
 ├── mathlab/                        # 主包
 │   ├── main.py                     # 入口：日志→异常钩子→QApplication→MainWindow
 │   ├── ui/           (42)          # 界面层：窗口、面板、画布、样式
-│   ├── core/         (57)          # 核心层：几何 DAG / CAS / AI / 沙箱 / 插件 / Jupyter
+│   ├── core/         (59)          # 核心层：几何 DAG / CAS / AI / 沙箱 / 插件 / Jupyter
 │   ├── utils/        (10)          # 工具层：logger / config / i18n / theme / theme_tokens / latex / markdown / version
 │   ├── data/         (3)           # 数据层：project.py、file_manager.py
 │   ├── plugins/      (5 内置)      # 每个插件 = 一个含 main.py 的目录
-│   ├── config/                     # prompts.yaml（生效）；ai_providers.json、ai_tools_schema.py 当前无代码读取
+│   ├── config/                     # prompts.yaml（生效，core/prompt_manager.py 读取）
 │   ├── locale/                     # zh.json / en.json（i18n 唯一数据源）
 │   ├── resources/                  # HTML / 图标 / monaco / web_src（前端产物）
 │   ├── docs/         (10 篇)       # api.md、user_guide.md、function_explorer_guide.md …
-│   ├── tests/                      # unit(24) / integration(2) / e2e(1) + 顶层 2
+│   ├── tests/                      # unit(27) / integration(2) / e2e(1) + 顶层 2
 │   ├── scripts/                    # check_i18n.py / check_ui_style.py（CI 守卫）/ update_i18n.py
 │   ├── settings.json               # 运行时配置（含 ai_api_key 字段，见 §8）
 │   ├── build_spec.spec             # PyInstaller 完整版（含 JupyterLab 资源）
