@@ -277,12 +277,45 @@ SUBMIT_TEACHING_PLAN_TOOL = {
     },
 }
 
+SAVE_MEMORY_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "save_memory",
+        "description": (
+            "把【跨会话稳定】的事实写入文件式记忆系统（Markdown 文件，用户可直接在编辑器里改）。"
+            "适合记录：用户偏好、项目约定、术语口径、反复踩过的坑。"
+            "不适合记录：一次性的中间过程（那类信息请用 target='daily' 写进当日日志）。"
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "fact": {
+                    "type": "string",
+                    "description": "要记住的一句话事实，例如「用户习惯用 SymPy 而非数值近似解根」",
+                },
+                "target": {
+                    "type": "string",
+                    "enum": ["curated", "daily"],
+                    "description": "curated=写入长期记忆 MEMORY.md（默认）；daily=写入当日日志 YYYY-MM-DD.md",
+                },
+                "scope": {
+                    "type": "string",
+                    "enum": ["project", "user"],
+                    "description": "project=项目级记忆（默认）；user=跨项目共享的用户级记忆",
+                },
+            },
+            "required": ["fact"],
+        },
+    },
+}
+
 AVAILABLE_TOOLS = [
     GEOMETRY_DRAW_TOOL,
     VISUAL_HIGHLIGHT_TOOL,
     QUIZ_GENERATOR_SCHEMA,
     AGENT_TRANSFER_TOOL,
     SUBMIT_TEACHING_PLAN_TOOL,
+    SAVE_MEMORY_TOOL,
 ]
 
 
@@ -300,6 +333,9 @@ _MAX_COMMANDS = 200
 _MAX_ELEMENT_NAMES = 50
 _MAX_QUIZ_OPTIONS = 6
 _MAX_TEACHING_STEPS = 10
+_MAX_MEMORY_FACT_CHARS = 500
+_VALID_MEMORY_TARGETS = {"curated", "daily"}
+_VALID_MEMORY_SCOPES = {"project", "user"}
 
 
 def validate_tool_call(tool_name: str, args_dict: dict):
@@ -327,6 +363,8 @@ def validate_tool_call(tool_name: str, args_dict: dict):
         return _validate_teaching_plan(args_dict)
     elif tool_name == "speak_at_location":
         return _validate_speak(args_dict)
+    elif tool_name == "save_memory":
+        return _validate_save_memory(args_dict)
     else:
         # 未知工具不阻断，仅记录警告
         logger.warning(f"未知工具名称: {tool_name}，跳过校验")
@@ -487,6 +525,21 @@ def _validate_speak(args: dict):
         return False, "speak_at_location: 'text' 必须是非空字符串"
     if len(text) > 200:
         return False, f"speak_at_location: 'text' 过长 ({len(text)} > 200 字符)"
+    return True, ""
+
+
+def _validate_save_memory(args: dict):
+    fact = args.get("fact")
+    if not isinstance(fact, str) or not fact.strip():
+        return False, "save_memory: 'fact' 必须是非空字符串"
+    if len(fact) > _MAX_MEMORY_FACT_CHARS:
+        return False, f"save_memory: 'fact' 过长 ({len(fact)} > {_MAX_MEMORY_FACT_CHARS} 字符)"
+    target = args.get("target", "curated")
+    if target not in _VALID_MEMORY_TARGETS:
+        return False, f"save_memory: 'target' 无效，允许值: {_VALID_MEMORY_TARGETS}"
+    scope = args.get("scope", "project")
+    if scope not in _VALID_MEMORY_SCOPES:
+        return False, f"save_memory: 'scope' 无效，允许值: {_VALID_MEMORY_SCOPES}"
     return True, ""
 
 

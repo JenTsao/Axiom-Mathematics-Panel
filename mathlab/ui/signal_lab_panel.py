@@ -24,9 +24,9 @@ from mathlab.core.async_workers import TaskManager
 
 # 尝试导入我们的底层引擎
 try:
-    from mathlab.core.cs_fft_engine import cs_fft
+    from mathlab.core.cs_fft_engine import CS_FFT_AVAILABLE, get_cs_fft
 
-    HAS_FFT_ENGINE = True
+    HAS_FFT_ENGINE = CS_FFT_AVAILABLE
 except ImportError:
     HAS_FFT_ENGINE = False
 
@@ -219,7 +219,10 @@ class SignalLabPanel(QWidget):
                 signal += (noise_level / 5.0) * np.random.randn(len(self.t))
 
             # 4. 呼叫 C# 引擎进行原地极速 FFT 分析
-            freqs, magnitudes = cs_fft.analyze_spectrum(signal, self.sample_rate)
+            engine = get_cs_fft()
+            if engine is None:
+                raise RuntimeError("C# FFT 引擎不可用（pythonnet / .NET 缺失）")
+            freqs, magnitudes = engine.analyze_spectrum(signal, self.sample_rate)
 
             # 5. 组装给 Echarts 的数据包
             display_signal = signal[::3].tolist()

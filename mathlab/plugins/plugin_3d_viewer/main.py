@@ -6,7 +6,7 @@ from PySide6.QtCore import QTimer, QUrl
 from PySide6.QtWebChannel import QWebChannel
 from PySide6.QtWebEngineWidgets import QWebEngineView
 
-from mathlab.core.cs_mesh_engine import cs_mesh_3d
+from mathlab.core.cs_mesh_engine import get_cs_mesh_3d
 from mathlab.core.plugin_base import MathLabPlugin
 from mathlab.utils.i18n_manager import t
 
@@ -54,12 +54,13 @@ class ThreeJSViewerPlugin(MathLabPlugin):
     def _render_frame(self):
         self.time_elapsed += 0.05
 
-        if not hasattr(cs_mesh_3d, "_engine") or cs_mesh_3d._engine is None:
+        engine = get_cs_mesh_3d()
+        if engine is None:
             return
 
         # 1. 呼叫 C# 暴力计算 150x150 密度的波纹曲面网格点 (共产生 405,000 个浮点数)
         # 这在纯 Python 下要跑死，但 C# 只需要 1ms！
-        flat_vertices = cs_mesh_3d.get_ripple_mesh_data(
+        flat_vertices = engine.get_ripple_mesh_data(
             x_range=(-10, 10),
             y_range=(-10, 10),
             x_seg=150,

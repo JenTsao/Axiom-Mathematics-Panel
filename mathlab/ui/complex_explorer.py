@@ -4,7 +4,7 @@ from PySide6.QtGui import QImage, QPixmap
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QWidget
 
 from mathlab.core.async_workers import TaskManager
-from mathlab.core.cs_complex_engine import cs_complex
+from mathlab.core.cs_complex_engine import get_cs_complex
 
 
 class FractalExplorer(QWidget):
@@ -49,7 +49,10 @@ class FractalExplorer(QWidget):
 
     def _render_mandelbrot(self):
         # 静态 Mandelbrot，直接同步渲染即可，只执行一次
-        rgb_matrix = cs_complex.generate_smooth_mandelbrot(
+        engine = get_cs_complex()
+        if engine is None:
+            return
+        rgb_matrix = engine.generate_smooth_mandelbrot(
             self.m_xmin, self.m_xmax, self.m_ymin, self.m_ymax, self.img_w, self.img_h
         )
         self._update_label_from_numpy(self.label_mandel, rgb_matrix, "mandel")
@@ -82,7 +85,10 @@ class FractalExplorer(QWidget):
         )
 
     def _render_julia_task(self, c_real, c_imag):
-        julia_matrix = cs_complex.generate_julia_image(
+        engine = get_cs_complex()
+        if engine is None:
+            raise RuntimeError("C# 分形引擎不可用（pythonnet / .NET 缺失）")
+        julia_matrix = engine.generate_julia_image(
             -2.0,
             2.0,
             -2.0,

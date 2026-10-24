@@ -1,32 +1,55 @@
+"""C# 复数/分形引擎（MathLab.CSharpEngine.FastComplex）的 Python 封装。
+
+设计要点（对齐 :mod:`mathlab.core.cs_num_engine` 的安全加载约定）：
+- pythonnet / .NET 运行时缺失时**模块导入不抛异常**，由调用方通过
+  :func:`get_cs_complex` 判断可用性并走降级路径；
+- 引擎实例**惰性创建**，不再于模块尾部无条件实例化。
+"""
+
 import os
 import sys
+import threading
+from typing import Any, Optional
 
 import numpy as np
 
-# 确保能找到 DLL 路径
-dll_path = os.path.abspath(
-    os.path.join(
-        os.path.dirname(__file__),
-        "..",
-        "..",
-        "MathLab.CSharpEngine",
-        "bin",
-        "Release",
-        "netstandard2.0",
-    )
-)
-if dll_path not in sys.path:
-    sys.path.append(dll_path)
+from mathlab.utils.logger import get_logger
 
-os.environ.setdefault("PYTHONNET_RUNTIME", "coreclr")
-import clr  # noqa: E402
+logger = get_logger(__name__)
+
+# ── C# 引擎加载（pythonnet）─────────────────────────────────────────────────
+# FastComplex 为 pythonnet 动态加载的 .NET 类型，静态类型系统无法解析，声明为 Any。
+FastComplex: Any = None
+CS_COMPLEX_AVAILABLE = False
+_LOAD_ERROR = ""
 
 try:
+    _DLL_DIR = os.path.abspath(
+        os.path.join(
+            os.path.dirname(__file__),
+            "..",
+            "..",
+            "MathLab.CSharpEngine",
+            "bin",
+            "Release",
+            "netstandard2.0",
+        )
+    )
+    if _DLL_DIR not in sys.path:
+        sys.path.append(_DLL_DIR)
+
+    os.environ.setdefault("PYTHONNET_RUNTIME", "coreclr")
+
+    import clr  # noqa: E402
+
     clr.AddReference("MathLab.CSharpEngine")
-    from MathLab.CSharpEngine import FastComplex
-except Exception as e:
-    print(f"Failed to load C# Engine: {e}")
-    FastComplex = None
+    from MathLab.CSharpEngine import FastComplex as _FastComplexClass
+
+    FastComplex = _FastComplexClass
+    CS_COMPLEX_AVAILABLE = True
+except Exception as _load_exc:  # pragma: no cover - 取决于本机 .NET 环境
+    _LOAD_ERROR = str(_load_exc)
+    logger.warning("C# 分形引擎不可用，Mandelbrot / Julia 渲染功能将不可用: %s", _LOAD_ERROR)
 
 
 class CsComplexEngine:
@@ -117,7 +140,7 @@ class CsComplexEngine:
         """
 
         # 1. 呼叫 C# 引擎 (新增的 Smooth 方法)
-        # 返回的是 System.Single[] (float[])
+        # 返回的是 System.Single (float[])
         res_flat = self._engine.GenerateMandelbrotSmooth(
             float(x_min),
             float(x_max),
@@ -160,5 +183,31 @@ class CsComplexEngine:
         return image_rgb
 
 
-# 全局单例
-cs_complex = CsComplexEngine()
+# ── 惰性单例 ────────────────────────────────────────────────────────────────
+# 历史问题：模块尾部曾直接 ``cs_complex = CsComplexEngine()``，DLL 缺失时
+# RuntimeError 在**导入期**抛出，击穿 complex_explorer / complex_panel。
+# 现改为首次使用时惰性创建；不可用或实例化失败返回 None。
+_cs_complex_singleton: Optional[CsComplexEngine] = None
+_cs_complex_lock = threading.Lock()
+
+
+def get_cs_complex() -> Optional[CsComplexEngine]:
+    """获取 C# 分形引擎单例；引擎不可用时返回 None（不抛异常）。
+
+    Returns:
+        可用时返回 :class:`CsComplexEngine` 实例；pythonnet 缺失、DLL 未编译
+        或实例化失败时返回 None，调用方应禁用/降级分形渲染功能。
+    """
+    global _cs_complex_singleton
+    if not CS_COMPLEX_AVAILABLE:
+        return None
+    if _cs_complex_singleton is not None:
+        return _cs_complex_singleton
+    with _cs_complex_lock:
+        if _cs_complex_singleton is None:
+            try:
+                _cs_complex_singleton = CsComplexEngine()
+            except Exception as exc:  # pragma: no cover - 取决于本机 .NET 环境
+                logger.warning("C# 分形引擎实例化失败，渲染功能不可用: %s", exc)
+                return None
+    return _cs_complex_singleton

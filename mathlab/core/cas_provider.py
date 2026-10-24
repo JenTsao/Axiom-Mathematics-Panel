@@ -3,7 +3,7 @@ import re
 import threading
 from typing import TYPE_CHECKING, Any
 
-from mathlab.core.cs_calculus_engine import cs_calculus
+from mathlab.core.cs_calculus_engine import get_cs_calculus
 from mathlab.core.expression_guard import (
     default_transformations,
     safe_parse_expr,
@@ -446,7 +446,7 @@ class SmartCalculusSolver:
     @staticmethod
     def solve_integral(expression_str: str, var_name: str, a: float, b: float):
         """
-        智能积分求解器：先解析 (Python)，后数值 (C#)
+        智能积分求解器：先符号 (SymPy)，后数值 (C# 优先，SciPy 降级)
         """
         _load_sympy()
         from sympy import Integral, Symbol, integrate
@@ -475,7 +475,7 @@ class SmartCalculusSolver:
             exact_val = float(integral_expr.evalf())
             return {"type": "exact", "value": exact_val, "method": "SymPy Symbolic"}
 
-        logger.info("解析解不存在或过于复杂，正在降级到 C# 自适应数值引擎...")
+        logger.info("解析解不存在或过于复杂，正在降级到数值积分引擎（C# 优先，SciPy 降级）...")
         return SmartCalculusSolver._fallback_to_csharp(expr, x, a, b)
 
     @staticmethod
@@ -486,12 +486,21 @@ class SmartCalculusSolver:
         # 例如将 sp.sin(x)/x 编译为 lambda x: math.sin(x)/x
         fast_py_func = lambdify(symbol, expr, modules=["math"])
 
-        # 将函数扔给 C# 底层跑 Gauss-Kronrod 算法
-        # 容差设为 1e-10，在现代 CPU 上 C# 算出结果只需 1~2 毫秒
-        numeric_val = cs_calculus.integrate_adaptive(fast_py_func, a, b, tol=1e-10)
+        # 优先呼叫 C# 底层跑 Gauss-Kronrod 自适应积分（容差 1e-10，1~2 毫秒）；
+        # pythonnet / .NET 不可用时降级到 SciPy quad（同为自适应 Gauss-Kronrod，
+        # 精度同级），保证缺 C# 环境的机器积分功能依然可用（P0 修复）。
+        engine = get_cs_calculus()
+        if engine is not None:
+            numeric_val = engine.integrate_adaptive(fast_py_func, a, b, tol=1e-10)
+            method = "C# Math.NET Double-Exponential"
+        else:
+            from scipy.integrate import quad
+
+            numeric_val, _est_err = quad(fast_py_func, float(a), float(b), epsabs=1e-10, epsrel=1e-10, limit=200)
+            method = "Python SciPy Quad"
 
         return {
             "type": "numeric",
             "value": numeric_val,
-            "method": "C# Math.NET Double-Exponential",
+            "method": method,
         }

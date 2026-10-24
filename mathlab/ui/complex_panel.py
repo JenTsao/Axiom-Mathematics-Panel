@@ -4,7 +4,7 @@ from PySide6.QtGui import QImage, QPixmap
 from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
 
 from mathlab.core.async_workers import TaskManager
-from mathlab.core.cs_complex_engine import cs_complex
+from mathlab.core.cs_complex_engine import get_cs_complex
 
 
 class ComplexPanel(QWidget):
@@ -62,7 +62,10 @@ class ComplexPanel(QWidget):
 
     def _render_task(self, x_min, x_max, y_min, y_max, width, height, max_iter):
         """此方法在子线程 (QThreadPool) 中执行，吃满 CPU 进行高强度复数计算"""
-        rgb_matrix = cs_complex.generate_smooth_mandelbrot(x_min, x_max, y_min, y_max, width, height, max_iter=max_iter)
+        engine = get_cs_complex()
+        if engine is None:
+            raise RuntimeError("C# 分形引擎不可用（pythonnet / .NET 缺失）")
+        rgb_matrix = engine.generate_smooth_mandelbrot(x_min, x_max, y_min, y_max, width, height, max_iter=max_iter)
         return rgb_matrix, width, height
 
     def _on_render_success(self, result):

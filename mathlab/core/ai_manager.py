@@ -1,11 +1,40 @@
+"""AI 调度中心与数学 Agent 基类。
+
+历史包袱提示：本文件一度膨胀到 1664 行，已拆出两块：
+
+* ``mathlab/core/ai_engine_worker.py`` —— Qt/openai 兼容层 + 流式工作线程
+* ``mathlab/core/planner_agent.py`` —— 教研组长 ``PlannerAgent``
+
+本文件保留 ``AIManager``（客户端与统计方法）、``ReasoningCache``、``ResourceConfig``、
+``BaseMathAgent`` 以及 ``GeometryAgent`` / ``DataVizAgent`` 两个薄壳子类。
+"""
+
 import importlib.util
 import threading
+from enum import Enum
 from typing import Optional
 
 import numpy as np
 
+from mathlab.core.ai_engine_worker import (
+    ONNX_AVAILABLE,
+    OPENAI_AVAILABLE,
+    QT_AVAILABLE,
+    REQUESTS_AVAILABLE,
+    TORCH_AVAILABLE,
+    AIEngineWorker,
+    AIState,
+    OpenAI,
+    QObject,
+    QThread,
+    Signal,
+    describe_api_error,
+)
 from mathlab.core.ai_tools import GEOMETRY_DRAW_TOOL, execute_math_task
+from mathlab.core.agent_memory import get_file_memory
+from mathlab.core.memory_manager import ChatMemoryManager
 from mathlab.core.skill_manager import SkillLibrary
+from mathlab.utils.logger import get_logger
 
 if importlib.util.find_spec("sklearn") is not None:
     SKLEARN_AVAILABLE = True
@@ -13,43 +42,28 @@ else:
     SKLEARN_AVAILABLE = False
 import json
 import os
-from enum import Enum
 
 try:
-    from PyQt5.QtCore import QObject, QThread
-    from PyQt5.QtCore import pyqtSignal as Signal
-
-    QT_AVAILABLE = True
+    import onnxruntime as ort  # noqa: F401
 except ImportError:
-    try:
-        from PySide6.QtCore import QObject, QThread, Signal
-
-        QT_AVAILABLE = True
-    except ImportError:
-        QT_AVAILABLE = False
-        QObject, QThread, Signal = object, object, object
-
-try:
-    from openai import (
-        APIConnectionError,
-        APIStatusError,
-        APITimeoutError,
-        AuthenticationError,
-        OpenAI,
-        RateLimitError,
-    )
-
-    OPENAI_AVAILABLE = True
-except ImportError:
-    OPENAI_AVAILABLE = False
-    OpenAI = object  # type: ignore[assignment, misc]
-    AuthenticationError = APIConnectionError = Exception  # type: ignore[assignment, misc]
-    APIStatusError = APITimeoutError = RateLimitError = Exception  # type: ignore[assignment, misc]
-
-from mathlab.core.memory_manager import ChatMemoryManager
-from mathlab.utils.logger import get_logger
+    ort = None  # type: ignore[assignment]
 
 logger = get_logger(__name__)
+
+# 向后兼容：历史代码从 ai_manager 导入这些名字，re-export 以免改一处挂一片
+__all__ = [
+    "AIEngineWorker",
+    "AIProvider",
+    "AIRequestConfig",
+    "AIState",
+    "AIManager",
+    "BaseMathAgent",
+    "DataVizAgent",
+    "GeometryAgent",
+    "ReasoningCache",
+    "ResourceConfig",
+    "describe_api_error",
+]
 
 # HTTP 客户端超时与重试：openai SDK 默认 read timeout 是 600 秒，
 # 网关挂住时用户要等 10 分钟才看到错误；这里收紧到"连接快、读取宽松、失败少量重试"。
@@ -60,50 +74,8 @@ AI_POOL_TIMEOUT = 10.0
 AI_MAX_RETRIES = 2
 
 
-def describe_api_error(exc: Exception) -> str:
-    """把 SDK/网络异常翻译成面向用户的简短提示。
-
-    [P1 修复] 原先直接把 ``str(exc)`` 发到 UI：自建网关的 base_url、上游返回体、
-    请求 id 都会原样出现在聊天区（既泄露部署细节，对用户也没有可读性）。
-    完整异常仍然写日志，只是不再进 UI。
-    """
-    if isinstance(exc, AuthenticationError):
-        return "API Key 无效或已过期，请在“偏好设置”里重新填写。"
-    if isinstance(exc, RateLimitError):
-        return "请求过于频繁或额度已用尽，请稍后再试。"
-    if isinstance(exc, APITimeoutError):
-        return "请求超时：模型服务器没有及时响应。"
-    if isinstance(exc, APIConnectionError):
-        return "无法连接到 AI 服务，请检查网络或 Base URL 是否正确。"
-    if isinstance(exc, APIStatusError):
-        status = getattr(exc, "status_code", None)
-        if status in (404, 410):
-            return f"接口或模型不存在（HTTP {status}），请检查模型名称。"
-        if status and status >= 500:
-            return f"AI 服务暂时不可用（HTTP {status}），请稍后再试。"
-        return f"AI 服务返回错误（HTTP {status}）。" if status else "AI 服务返回错误。"
-    return "AI 请求失败，详见日志。"
-
-
 # 工具 Schema 统一从 ai_tools.py 导入（消除重复定义）
 DRAW_TOOL_SCHEMA = GEOMETRY_DRAW_TOOL  # 别名，供 quiz_panel 等模块使用
-
-# Torch availability check — 使用 find_spec 快速检测，避免模块级 import 加载重型库
-TORCH_AVAILABLE = importlib.util.find_spec("torch") is not None
-
-try:
-    import onnxruntime as ort  # noqa: F401
-
-    ONNX_AVAILABLE = True
-except ImportError:
-    ONNX_AVAILABLE = False
-
-try:
-    import requests  # noqa: F401
-
-    REQUESTS_AVAILABLE = True
-except ImportError:
-    REQUESTS_AVAILABLE = False
 
 
 def _lazy_import_torch():
@@ -143,120 +115,6 @@ class AIRequestConfig:
         self.base_url = base_url
 
 
-class AIState(Enum):
-    IDLE = "空闲"
-    THINKING = "思考中..."  # 已发请求，等待首字节 (TTFB)
-    GENERATING = "生成中..."  # 正在打字输出
-    EXECUTING_TOOL = "执行工具中..."  # 正在调用画笔等本地函数
-    FINISHED = "完成"
-    ERROR = "出错了"
-
-
-class AIEngineWorker(QThread):
-    """
-    统一、纯净的流式 AI 核心线程
-    全面废弃野路子正则，严格使用 Function Calling，支持 Token 统计
-    """
-
-    state_changed = Signal(AIState)
-    chunk_received = Signal(str)
-    tool_call_received = Signal(str, object)
-    usage_reported = Signal(int, int)
-    finished_text = Signal(str)
-    error_occurred = Signal(str)
-
-    def __init__(self, client: OpenAI, model: str, messages: list, tools: list = None):
-        super().__init__()
-        self.client = client
-        self.model = model
-        self.messages = messages
-        self.tools = tools
-        self._is_cancelled = False
-
-    def cancel(self):
-        self._is_cancelled = True
-
-    def stop(self):
-        self.cancel()
-
-    def run(self):
-        self.state_changed.emit(AIState.THINKING)
-        try:
-            kwargs = {
-                "model": self.model,
-                "messages": self.messages,
-                "stream": True,
-                "temperature": 0.3,
-                "stream_options": {"include_usage": True},
-            }
-            if self.tools:
-                kwargs["tools"] = self.tools
-                kwargs["tool_choice"] = "auto"
-
-            response = self.client.chat.completions.create(**kwargs)
-
-            full_text = ""
-            tool_calls_buffer = {}
-            has_started_typing = False
-
-            for chunk in response:
-                if self._is_cancelled:
-                    break
-
-                if chunk.usage is not None:
-                    self.usage_reported.emit(chunk.usage.prompt_tokens, chunk.usage.completion_tokens)
-                    continue
-
-                if not chunk.choices:
-                    continue
-
-                delta = chunk.choices[0].delta
-
-                if not has_started_typing and (
-                    getattr(delta, "content", None) or getattr(delta, "tool_calls", None)
-                ):  # noqa: E501
-                    has_started_typing = True
-                    self.state_changed.emit(AIState.GENERATING)
-
-                if getattr(delta, "content", None):
-                    full_text += delta.content
-                    self.chunk_received.emit(delta.content)
-
-                if getattr(delta, "tool_calls", None):
-                    for tc in delta.tool_calls:
-                        idx = tc.index
-                        if idx not in tool_calls_buffer:
-                            name = (tc.function.name or "") if tc.function else ""
-                            tool_calls_buffer[idx] = {"name": name, "arguments": ""}
-                        elif tc.function and tc.function.name:
-                            tool_calls_buffer[idx]["name"] = tc.function.name
-
-                        if tc.function and tc.function.arguments:
-                            tool_calls_buffer[idx]["arguments"] += tc.function.arguments  # noqa: E501
-
-            if tool_calls_buffer:
-                self.state_changed.emit(AIState.EXECUTING_TOOL)
-                for tc in tool_calls_buffer.values():
-                    try:
-                        args = json.loads(tc["arguments"]) if tc["arguments"] else {}
-                    except (json.JSONDecodeError, TypeError):
-                        args = {}
-                    self.tool_call_received.emit(tc["name"], args)
-
-            if not self._is_cancelled:
-                self.state_changed.emit(AIState.FINISHED)
-                self.finished_text.emit(full_text)
-            else:
-                self.state_changed.emit(AIState.IDLE)
-
-        except Exception as e:
-            self.state_changed.emit(AIState.ERROR)
-            # [P1 修复] 不再把 str(e) 原样发给 UI（会带出 base_url / 上游响应体），
-            # 完整异常只写日志
-            self.error_occurred.emit(describe_api_error(e))
-            logger.error("AI Worker Error: %s", e, exc_info=True)
-
-
 class AIManager(QObject):
     """
     单一职责的全局 AI 调度中心
@@ -268,6 +126,8 @@ class AIManager(QObject):
         self.client = None
         self.current_worker = None
         self.memory = ChatMemoryManager()
+        # 文件式记忆系统（Codex 风格）：跨会话持久化的 Markdown 记忆，读取零副作用
+        self.file_memory = get_file_memory()
         self.models = {}
         self.sandbox = None
         self.current_model = "deepseek-chat"
@@ -345,6 +205,17 @@ class AIManager(QObject):
 ```
 当用户问"这个图怎么解"、"为什么我画的不对"等模糊问题时，请务必参考上述快照数据进行推导和回答。
 """
+
+        # 注入文件式记忆（长期记忆 / 项目指令 / 近期日志），无内容时返回空串
+        try:
+            memory_block = self.file_memory.get_context_block()
+        except Exception as exc:  # noqa: BLE001 - 记忆层故障不得阻断对话
+            logger.warning("装配文件式记忆失败，本次请求跳过: %s", exc)
+            memory_block = ""
+        if memory_block:
+            dynamic_system_prompt = (
+                dynamic_system_prompt + "\n\n" + memory_block if dynamic_system_prompt else memory_block
+            )
 
         if dynamic_system_prompt:
             messages.insert(0, {"role": "system", "content": dynamic_system_prompt})
@@ -929,7 +800,16 @@ class BaseMathAgent:
             pedagogical_builder = PedagogicalPromptBuilder(self.student_model)
             pedagogical_context = pedagogical_builder.build_code_generation_constraint(user_prompt)
 
+        # 文件式记忆：优先复用 AIManager 上的实例，缺失时退回进程单例
+        memory_context = ""
+        file_memory = getattr(self.ai_manager, "file_memory", None) or get_file_memory()
+        try:
+            memory_context = file_memory.get_context_block()
+        except Exception as exc:  # noqa: BLE001 - 记忆层故障不得阻断推理闭环
+            logger.warning("装配文件式记忆失败，本次推理跳过: %s", exc)
+
         system_prompt = f"""{self.system_prompt}
+{memory_context}
 {skill_context}
 {adaptive_context}
 {pedagogical_context}

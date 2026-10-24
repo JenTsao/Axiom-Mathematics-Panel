@@ -189,7 +189,21 @@
     "provider": "AI 提供商:",
     "you": "你",
     "assistant": "AI 助手",
-    "error": "错误"
+    "error": "错误",
+    "help_memory_commands": "<kbd>/remember &lt;内容&gt;</kbd> - 写入长期记忆<br><kbd>/forget &lt;关键词&gt;</kbd> - 删除记忆条目<br><kbd>/log &lt;内容&gt;</kbd> - 写入当日日志<br><kbd>/memory [distill|clear confirm]</kbd> - 查看/维护文件式记忆<br>",
+    "memory_saved": "**[记忆]** 已写入长期记忆：`{fact}`",
+    "memory_logged": "**[记忆]** 已写入当日日志。",
+    "memory_save_failed": "**[记忆]** 写入失败，详见日志（可能是记忆目录不可写）。",
+    "memory_need_content": "**[记忆]** 缺少要记住的内容。用法：`/remember <内容>`",
+    "memory_need_keyword": "**[记忆]** 缺少关键词。用法：`/forget <关键词>`",
+    "memory_forgot": "**[记忆]** 已遗忘 {count} 条含「{keyword}」的条目。",
+    "memory_forget_none": "**[记忆]** 没有找到含「{keyword}」的条目。",
+    "memory_overview": "**[记忆]** 文件式记忆概况：",
+    "memory_empty": "*（长期记忆为空）*",
+    "memory_disabled": "**[记忆]** 文件式记忆系统已在偏好设置中关闭。",
+    "memory_distilled": "**[记忆]** 已蒸馏归档 {count} 份过期日志。",
+    "memory_clear_hint": "**[记忆]** 清空操作需二次确认，请输入 `/memory clear confirm`。",
+    "memory_cleared": "**[记忆]** 已清空，共删除 {count} 个记忆文件。"
   },
   "algo_vis": {
     "title": "算法可视化",

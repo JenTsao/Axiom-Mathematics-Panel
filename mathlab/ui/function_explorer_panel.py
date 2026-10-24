@@ -37,9 +37,9 @@ from mathlab.utils.i18n_manager import t
 try:
     import sympy as sp
 
-    from mathlab.core.cs_calculus_engine import cs_calculus
+    from mathlab.core.cs_calculus_engine import CS_CALCULUS_AVAILABLE, get_cs_calculus
 
-    HAS_CALCULUS_ENGINE = True
+    HAS_CALCULUS_ENGINE = CS_CALCULUS_AVAILABLE
 except ImportError:
     HAS_CALCULUS_ENGINE = False
 
@@ -351,7 +351,10 @@ class FunctionExplorerPanel(QDockWidget):
 
             # 2. 呼叫 C# 引擎秒算高斯-克朗罗德积分
             self.int_result_label.setText("计算中...")
-            area_val = cs_calculus.integrate_adaptive(fast_func, a, b, tol=1e-8)
+            engine = get_cs_calculus()
+            if engine is None:
+                raise RuntimeError("C# 微积分引擎不可用（pythonnet / .NET 缺失）")
+            area_val = engine.integrate_adaptive(fast_func, a, b, tol=1e-8)
 
             # 3. 更新 UI
             self.int_result_label.setText(f"面积 ≈ {area_val:.5f}")
@@ -384,7 +387,10 @@ class FunctionExplorerPanel(QDockWidget):
 
             # 1. 调用 C# 引擎计算在 x0 处的导数 (斜率)
             self.deriv_result_label.setText("计算中...")
-            slope_k = cs_calculus.differentiate(fast_func, x0)
+            engine = get_cs_calculus()
+            if engine is None:
+                raise RuntimeError("C# 微积分引擎不可用（pythonnet / .NET 缺失）")
+            slope_k = engine.differentiate(fast_func, x0)
 
             # 2. 计算出具体函数值 y0
             y0 = fast_func(x0)

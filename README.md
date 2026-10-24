@@ -30,7 +30,7 @@
 | CAS 符号计算、函数绘图、Cell 笔记本 | ✅ 可用 | `core/cas_provider.py`、`core/models/function.py`、`ui/notebook_panel.py` |
 | 子进程沙箱 + Jupyter 内核沙箱 | ✅ 可用；执行前有 AST 安全扫描（父子两道） | `core/sandbox.py`、`core/sandbox_script.py`、`core/sandbox_security.py`、`core/expression_guard.py` |
 | 多智能体调度（教研组长 → 子 Agent） | ✅ 可用（已修掉"子任务执行两遍"的缺陷） | `core/ai_manager.py::PlannerAgent`、`core/agent_message.py` |
-| C# 加速内核（含可选数值后端） | ⚠️ 部分：`num_engine` 路径有降级与测试；`cas_provider` 对 `cs_calculus` 是**无保护导入**，缺 pythonnet/.NET 时 CAS 层会报错 | `core/cas_provider.py:6`、`core/cs_*.py` |
+| C# 加速内核（含可选数值后端） | ✅ 导入安全：全部 `cs_*` 模块改为 try 加载 + 惰性单例 + 可用性标志，缺 pythonnet/.NET 时功能静默降级（`cas_provider` 积分降级 SciPy quad；分形 / 3D / FFT 面板禁用并记日志）。注意 `num_engine` 的 C# 路径实测慢于 SciPy，默认不启用 | `core/cs_*.py` |
 | 内嵌 JupyterLab | ⚠️ 依赖 `jupyter-lab` 子命令已注册；本机若只装了包而入口点缺失，服务起不来（应用会记录超时并降级） | `core/jupyter_manager.py` |
 | 主题（light/dark/sepia）、会话持久化、撤销栈 | ✅ 可用，真源是 token 表 | `utils/theme_tokens.py`、`ui/session_state.py`、`core/undo_stack.py` |
 | **10 家大模型接入** | ❌ **未接线**。`config/ai_providers.json` 与 `core/ai_provider_config.py` 全仓零引用；真正生效的只有 `settings.json` 的 `ai_api_key`/`ai_base_url`/`ai_model` + OpenAI 兼容 SDK，偏好设置里另有一份硬编码的 4 家模板 | `core/ai_manager.py:reload_config`、`ui/preferences_dialog.py` |

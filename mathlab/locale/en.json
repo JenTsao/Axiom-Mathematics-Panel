@@ -189,7 +189,21 @@
     "provider": "AI Provider:",
     "you": "You",
     "assistant": "AI Assistant",
-    "error": "Error"
+    "error": "Error",
+    "help_memory_commands": "<kbd>/remember &lt;text&gt;</kbd> - write to long-term memory<br><kbd>/forget &lt;keyword&gt;</kbd> - remove memory entries<br><kbd>/log &lt;text&gt;</kbd> - append to today's log<br><kbd>/memory [distill|clear confirm]</kbd> - inspect/maintain file memory<br>",
+    "memory_saved": "**[Memory]** Saved to long-term memory: `{fact}`",
+    "memory_logged": "**[Memory]** Appended to today's log.",
+    "memory_save_failed": "**[Memory]** Write failed, see logs (memory dir may be read-only).",
+    "memory_need_content": "**[Memory]** Missing content. Usage: `/remember <text>`",
+    "memory_need_keyword": "**[Memory]** Missing keyword. Usage: `/forget <keyword>`",
+    "memory_forgot": "**[Memory]** Forgot {count} entries containing \"{keyword}\".",
+    "memory_forget_none": "**[Memory]** No entry contains \"{keyword}\".",
+    "memory_overview": "**[Memory]** File memory overview:",
+    "memory_empty": "*(long-term memory is empty)*",
+    "memory_disabled": "**[Memory]** File memory system is disabled in preferences.",
+    "memory_distilled": "**[Memory]** Archived {count} stale log files.",
+    "memory_clear_hint": "**[Memory]** Clearing requires confirmation: `/memory clear confirm`.",
+    "memory_cleared": "**[Memory]** Cleared, removed {count} memory files."
   },
   "algo_vis": {
     "title": "Algorithm Visualization",

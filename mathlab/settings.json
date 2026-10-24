@@ -6,6 +6,9 @@
   "ai_api_key": "",
   "ai_base_url": "https://api.deepseek.com/v1",
   "ai_model": "deepseek-chat",
+  "aa_enabled": true,
+  "enable_undo": true,
+  "enable_file_memory": true,
   "sandbox": {
     "timeout": 30,
     "memory_limit_mb": 256

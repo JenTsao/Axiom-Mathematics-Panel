@@ -26,6 +26,8 @@ _DEFAULT_CONFIG: Dict[str, Any] = {
     "aa_enabled": True,
     # D-3：撤销栈启用开关（关闭时 Ctrl+Z 灰置，UndoStack 零开销）
     "enable_undo": True,
+    # 文件式记忆系统总开关（关闭后不读取也不写入 Markdown 记忆文件）
+    "enable_file_memory": True,
     "sandbox": {
         "timeout": 30,
         "memory_limit_mb": 256,

@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from mathlab.core.agent_memory import get_file_memory
 from mathlab.core.agent_registry import get_agent
 from mathlab.core.ai_manager import AIProvider, AIRequestConfig, AIState
 from mathlab.core.ai_tools import AVAILABLE_TOOLS, validate_tool_call
@@ -579,6 +580,18 @@ class AIToolsPanel(QDockWidget):
             self.chat_input.setText(f"请根据 {topic} 出一道测试题。")
             self.on_send_message()
 
+        elif command == "/remember":
+            self._handle_remember(args)
+
+        elif command == "/forget":
+            self._handle_forget(args)
+
+        elif command == "/log":
+            self._handle_log(args)
+
+        elif command == "/memory":
+            self._handle_memory(args)
+
         elif command == "/help":
             help_text = """
             <b>⚡ 快捷指令指南：</b><br>
@@ -586,11 +599,103 @@ class AIToolsPanel(QDockWidget):
             <kbd>/draft</kbd> - 开启/确认草稿模式<br>
             <kbd>/quiz [知识点]</kbd> - 强制生成测验<br>
             <kbd>@geometry</kbd> - 召唤几何专家画图<br>
-            """
+            """ + t("ai_tools.help_memory_commands")
             self.chat_display.add_message("ai", help_text)
 
         else:
             self.chat_display.add_message("ai", f"**[错误]** 未知指令: {command}，输入 /help 查看支持的命令。")
+
+    # ------------------------------------------------------------------
+    # 文件式记忆（Codex 风格：Markdown 文件即记忆）
+    # ------------------------------------------------------------------
+    def _handle_save_memory(self, args_dict: dict):
+        """处理 AI 主动发起的 ``save_memory`` 工具调用。"""
+        fact = (args_dict.get("fact") or "").strip()
+        if not fact:
+            return
+
+        target = args_dict.get("target", "curated")
+        scope = args_dict.get("scope", "project")
+        memory = get_file_memory()
+        if target == "daily":
+            ok = memory.append_daily(fact, scope=scope)
+        else:
+            ok = memory.remember(fact, scope=scope)
+
+        if ok:
+            self.chat_display.add_message("ai", t("ai_tools.memory_saved", fact=fact))
+        else:
+            self.chat_display.add_message("ai", t("ai_tools.memory_save_failed"))
+
+    def _handle_remember(self, text: str):
+        """/remember <内容>：写入长期记忆 MEMORY.md。"""
+        fact = (text or "").strip()
+        if not fact:
+            self.chat_display.add_message("ai", t("ai_tools.memory_need_content"))
+            return
+
+        if get_file_memory().remember(fact):
+            self.chat_display.add_message("ai", t("ai_tools.memory_saved", fact=fact))
+        else:
+            self.chat_display.add_message("ai", t("ai_tools.memory_save_failed"))
+
+    def _handle_forget(self, text: str):
+        """/forget <关键词>：从长期记忆中删除含关键词的条目。"""
+        keyword = (text or "").strip()
+        if not keyword:
+            self.chat_display.add_message("ai", t("ai_tools.memory_need_keyword"))
+            return
+
+        removed = get_file_memory().forget(keyword)
+        if removed:
+            self.chat_display.add_message("ai", t("ai_tools.memory_forgot", count=removed, keyword=keyword))
+        else:
+            self.chat_display.add_message("ai", t("ai_tools.memory_forget_none", keyword=keyword))
+
+    def _handle_log(self, text: str):
+        """/log <内容>：写入当日日志 YYYY-MM-DD.md。"""
+        note = (text or "").strip()
+        if not note:
+            self.chat_display.add_message("ai", t("ai_tools.memory_need_content"))
+            return
+
+        if get_file_memory().append_daily(note):
+            self.chat_display.add_message("ai", t("ai_tools.memory_logged"))
+        else:
+            self.chat_display.add_message("ai", t("ai_tools.memory_save_failed"))
+
+    def _handle_memory(self, args_text: str):
+        """/memory [distill|clear confirm]：查看或维护文件式记忆。"""
+        sub = (args_text or "").strip().lower()
+        memory = get_file_memory()
+
+        if not memory.enabled:
+            self.chat_display.add_message("ai", t("ai_tools.memory_disabled"))
+            return
+
+        if sub == "distill":
+            archived = memory.distill()
+            self.chat_display.add_message("ai", t("ai_tools.memory_distilled", count=len(archived)))
+            return
+
+        if sub.startswith("clear"):
+            if "confirm" not in sub:
+                self.chat_display.add_message("ai", t("ai_tools.memory_clear_hint"))
+                return
+            removed = memory.clear()
+            self.chat_display.add_message("ai", t("ai_tools.memory_cleared", count=removed))
+            return
+
+        snapshot = memory.snapshot()
+        lines = [t("ai_tools.memory_overview")]
+        for scope, info in snapshot.items():
+            lines.append(f"- **{scope}** `{info['root']}` — {len(info['files'])} files")
+        curated = memory.read_curated()
+        if curated.strip():
+            lines.append("\n```markdown\n" + curated.strip() + "\n```")
+        else:
+            lines.append("\n" + t("ai_tools.memory_empty"))
+        self.chat_display.add_message("ai", "\n".join(lines))
 
     def on_send_message(self):
         if self.is_generating:
@@ -909,6 +1014,8 @@ class AIToolsPanel(QDockWidget):
                     self.chat_display.append(magic_html)
             except Exception as e:
                 logger.error("高亮指令执行失败: %s", e)
+        elif tool_name == "save_memory":
+            self._handle_save_memory(args_dict)
 
         # === 审计日志：记录完成 ===
         _elapsed = time.time() - _start_time
