@@ -12,7 +12,6 @@
 """
 
 import json
-import importlib.util
 from enum import Enum
 
 from mathlab.utils.logger import get_logger
@@ -50,23 +49,6 @@ except ImportError:
     OpenAI = object  # type: ignore[assignment, misc]
     AuthenticationError = APIConnectionError = Exception  # type: ignore[assignment, misc]
     APIStatusError = APITimeoutError = RateLimitError = Exception  # type: ignore[assignment, misc]
-
-# 兼容层消费方需要的重型库探测，同样集中在此
-TORCH_AVAILABLE = importlib.util.find_spec("torch") is not None
-
-try:
-    import onnxruntime as ort  # noqa: F401
-
-    ONNX_AVAILABLE = True
-except ImportError:
-    ONNX_AVAILABLE = False
-
-try:
-    import requests  # noqa: F401
-
-    REQUESTS_AVAILABLE = True
-except ImportError:
-    REQUESTS_AVAILABLE = False
 
 
 def describe_api_error(exc: Exception) -> str:

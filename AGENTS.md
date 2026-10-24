@@ -446,6 +446,7 @@ QTimer.singleShot(0, self._deferred_init)   # AI 集成 / ECharts 绑定 / REPL 
 | T-6 | `mathlab/locale/en.json` | ✅ 已修：双语各 402 叶键、完全对称。以下为原始记录：比 `zh.json` 少 `math_console.vars`、`math_console.workspace` 两个键 | 新增 key 必须双语同步（§6） |
 | T-7 | `mathlab/scripts/update_i18n.py` | 内部硬编码 `j:/PROJECT/...` 绝对路径 | 不要直接运行；改为手动编辑 JSON 或先修复脚本路径 |
 | T-8 | `README.md` | ✅ 已修：Mixin 数、`python -m mathlab`、工程文件扩展名（`.mathlab` 而非 `.mlproj`）、许可证版本、以及“WebSocket 协作 / 云端同步 / 资源库 / 10 家模型接入”等未实现项均已按事实改写，README 顶部新增「📌 当前状态」表区分“可用 / 代码就绪未接线 / 不存在” | 文档继续按源码事实校验后再写 |
+| T-10 | `mathlab/core/ai_manager.py`（原 1664 行） | ✅ 已拆：`AIEngineWorker` + Qt/openai 兼容层 → `ai_engine_worker.py`；`PlannerAgent` → `planner_agent.py`；两个 `solve_problem`（cx 59 / cx 36）策略化拆成若干 cx≤11 的环节。拆分后 `ai_manager.py` 最高 cx=19（`ask`），全仓已无 cx>40 的函数。旧导入路径全部保留（re-export + PEP 562 `__getattr__`），契约见 `mathlab/docs/ai_manager_split.md` | 后续可继续拆出 `AIManager` 的 ML 统计方法（`fit_*` / `cluster_*` / `recognize_digit`）与 `ReasoningCache`——二者与 AI 调度无耦合，是这个文件剩下的最大两块 |
 | T-9 | `mathlab/core/cs_*.py` 全家 | ✅ 已全部修复：`cs_calculus` / `cs_complex` / `cs_mesh` / `cs_fft` 原为裸 `import clr` + 模块尾实例化，缺 pythonnet/.NET 时导入期抛异常，分别击穿 `cas_provider`（CAS 层）、分形面板、3D 插件、信号面板（且 `signal_lab_panel` 的 except 只捕 `ImportError`，漏放 `RuntimeError`）。已统一为 try 包裹加载 + `get_cs_*()` 惰性单例 + `CS_*_AVAILABLE` 标志（模板照抄 `cs_num_engine.py`），调用方按标志降级：`cas_provider` 积分降级 SciPy quad，UI 工作线程抛 `RuntimeError` 由 `TaskManager` 记录，同步路径提前返回 | 新增 `cs_*` 模块直接复制该模板；严禁模块级实例化引擎 |
 
 ---
@@ -465,6 +466,8 @@ QTimer.singleShot(0, self._deferred_init)   # AI 集成 / ECharts 绑定 / REPL 
 | 加文案 | `mathlab/locale/zh.json` + `en.json`（双语同步） |
 | 加配置项 | `mathlab/utils/config_manager.py::_DEFAULT_CONFIG` |
 | 改 AI 记忆 | `mathlab/core/agent_memory.py`（文件式记忆：项目级 `mathlab/data/memory/`、用户级 `~/.mathlab/memory/`，详见 `mathlab/docs/agent_memory.md`） |
+| 改 AI 流式线程 | `mathlab/core/ai_engine_worker.py` —— Qt/openai 兼容层的**唯一真源** + `AIEngineWorker` |
+| 改教研组长 | `mathlab/core/planner_agent.py` —— `PlannerAgent` + `StepResultCollector`（拆分契约见 `mathlab/docs/ai_manager_split.md`） |
 | 改沙箱 | `mathlab/core/sandbox_security.py`（**不得放宽**）+ `core/sandbox_script.py`（子进程同规则副本，改一处必须同步） |
 | 解析表达式字符串 | `mathlab/core/expression_guard.py`（`safe_parse_expr` / `safe_sympify`，**禁止**直接用 sympy 的 `sympify`/`parse_expr`） |
 | 加异步任务 | `mathlab/core/async_workers.py`（`QRunnable` + `QThreadPool`） |

@@ -16,22 +16,24 @@ from typing import Optional
 
 import numpy as np
 
+from mathlab.core.agent_memory import get_file_memory
 from mathlab.core.ai_engine_worker import (
-    ONNX_AVAILABLE,
     OPENAI_AVAILABLE,
     QT_AVAILABLE,
-    REQUESTS_AVAILABLE,
-    TORCH_AVAILABLE,
     AIEngineWorker,
     AIState,
+    APIConnectionError,
+    APIStatusError,
+    APITimeoutError,
+    AuthenticationError,
     OpenAI,
     QObject,
     QThread,
+    RateLimitError,
     Signal,
     describe_api_error,
 )
 from mathlab.core.ai_tools import GEOMETRY_DRAW_TOOL, execute_math_task
-from mathlab.core.agent_memory import get_file_memory
 from mathlab.core.memory_manager import ChatMemoryManager
 from mathlab.core.skill_manager import SkillLibrary
 from mathlab.utils.logger import get_logger
@@ -43,27 +45,70 @@ else:
 import json
 import os
 
+# Torch availability check — 使用 find_spec 快速检测，避免模块级 import 加载重型库
+TORCH_AVAILABLE = importlib.util.find_spec("torch") is not None
+
 try:
     import onnxruntime as ort  # noqa: F401
+
+    ONNX_AVAILABLE = True
 except ImportError:
-    ort = None  # type: ignore[assignment]
+    ONNX_AVAILABLE = False
+
+try:
+    import requests  # noqa: F401
+
+    REQUESTS_AVAILABLE = True
+except ImportError:
+    REQUESTS_AVAILABLE = False
 
 logger = get_logger(__name__)
 
-# 向后兼容：历史代码从 ai_manager 导入这些名字，re-export 以免改一处挂一片
+# 向后兼容：历史代码与测试从 ai_manager 导入这些名字，re-export 以免改一处挂一片。
+# 其中 Qt / openai 系列来自 ai_engine_worker（兼容层的单一真源）。
 __all__ = [
     "AIEngineWorker",
     "AIProvider",
     "AIRequestConfig",
     "AIState",
     "AIManager",
+    "APIConnectionError",
+    "APIStatusError",
+    "APITimeoutError",
+    "AuthenticationError",
     "BaseMathAgent",
     "DataVizAgent",
     "GeometryAgent",
+    "OPENAI_AVAILABLE",
+    "ONNX_AVAILABLE",
+    "OpenAI",
+    "QT_AVAILABLE",
+    "QObject",
+    "QThread",
+    "RateLimitError",
+    "REQUESTS_AVAILABLE",
     "ReasoningCache",
     "ResourceConfig",
+    "Signal",
+    "TORCH_AVAILABLE",
     "describe_api_error",
 ]
+
+
+def __getattr__(name: str):
+    """PEP 562 延迟转发：``PlannerAgent`` 已迁到 ``planner_agent`` 模块。
+
+    ``planner_agent`` 在顶层 import 本模块（取 ``BaseMathAgent`` / ``ResourceConfig``），
+    所以本模块**不能**在顶层反向 import，否则成环。这里保留旧导入路径
+    ``from mathlab.core.ai_manager import PlannerAgent``，等真正访问时再解析。
+    """
+    if name in ("PlannerAgent", "StepResultCollector"):
+        import importlib
+
+        module = importlib.import_module(".planner_agent", __package__)
+        return getattr(module, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 
 # HTTP 客户端超时与重试：openai SDK 默认 read timeout 是 600 秒，
 # 网关挂住时用户要等 10 分钟才看到错误；这里收紧到"连接快、读取宽松、失败少量重试"。
@@ -645,6 +690,42 @@ class ResourceConfig:
         return presets.get(agent_name, cls.get_default())
 
 
+class SolveCallbacks:
+    """把四个可选回调收敛成一个可空安全调用的对象。
+
+    原 ``solve_problem`` 里散落着十来处 ``if on_xxx_cb: on_xxx_cb(...)``，
+    既拉长行数又抬高圈复杂度；这里统一做 None 检查。
+    """
+
+    __slots__ = ("_thought", "_code", "_finish", "_geom")
+
+    def __init__(self, thought=None, code=None, finish=None, geom=None):
+        self._thought = thought
+        self._code = code
+        self._finish = finish
+        self._geom = geom
+
+    def thought(self, text: str) -> None:
+        """推送一条思考过程文本。"""
+        if self._thought:
+            self._thought(text)
+
+    def code(self, code: str) -> None:
+        """推送一次生成的代码。"""
+        if self._code:
+            self._code(code)
+
+    def finish(self, success: bool, content: str) -> None:
+        """推送完成事件。"""
+        if self._finish:
+            self._finish(success, content)
+
+    def geom(self, commands: list) -> None:
+        """推送一批几何绘图命令。"""
+        if self._geom:
+            self._geom(commands)
+
+
 class BaseMathAgent:
     def __init__(
         self,
@@ -735,6 +816,10 @@ class BaseMathAgent:
             logger.error(f"LLM Generate Code Error: {e}")
             return "print('Error generating code')"
 
+    # 对话历史裁剪：保留 system + 初始 user（前 2 条）+ 最近 3 轮对话（6 条），
+    # 避免 ReAct 重试时上下文无限增长（BUG 6 修复）
+    MAX_HISTORY_MSGS = 8
+
     def solve_problem(
         self,
         user_prompt: str,
@@ -743,70 +828,80 @@ class BaseMathAgent:
         on_finish_cb=None,
         on_geom_cb=None,
     ):
+        """ReAct 推理闭环：缓存 → 装配提示 → 生成代码 → 沙箱执行 → 失败重试。
+
+        Args:
+            user_prompt: 用户提出的数学问题。
+            on_thought_cb: 思考过程回调（可选）。
+            on_code_cb: 生成代码回调（可选）。
+            on_finish_cb: 完成回调 ``(success, content)``（可选）。
+            on_geom_cb: 几何绘图命令回调（可选）。
+
+        Returns:
+            结果字典；成功时含 ``status="ok"`` 与 ``code``。
+        """
+        cbs = SolveCallbacks(on_thought_cb, on_code_cb, on_finish_cb, on_geom_cb)
+
         # ============== 前置校验：未配置 API 客户端时直接失败，避免 NoneType 崩溃 ==============
         if getattr(self.ai_manager, "client", None) is None:
-            if on_thought_cb:
-                on_thought_cb("❌ 未配置 AI API Key，无法启动推理闭环。")
-            if on_finish_cb:
-                on_finish_cb(False, "未配置 API Key")
+            cbs.thought("❌ 未配置 AI API Key，无法启动推理闭环。")
+            cbs.finish(False, "未配置 API Key")
             return {"status": "failed", "error": "未配置 API Key"}
 
         # ============== 0. 推理缓存检索阶段 ==============
         cached = self._reasoning_cache.get(user_prompt)
         if cached is not None:
-            if on_thought_cb:
-                on_thought_cb("📦 推理缓存命中！直接复用历史结果，跳过 LLM 调用。")
-            if on_code_cb:
-                on_code_cb(cached.get("code", ""))
-            geom_cmds = cached.get("geom_commands", [])
-            if geom_cmds and on_geom_cb:
-                on_geom_cb(geom_cmds)
-            if on_finish_cb:
-                on_finish_cb(True, cached.get("code", ""))
-            return cached
+            return self._replay_cached_result(cached, cbs)
 
-        # ============== 1. RAG 检索阶段 ==============
-        if on_thought_cb:
-            on_thought_cb("🔍 正在检索本地技能库记忆...")
+        # ============== 1. 装配系统提示（RAG + 自适应 + 教学法 + 文件记忆）==============
+        messages = self._build_initial_messages(user_prompt, cbs)
 
-        relevant_skills = self.skill_lib.retrieve_relevant_skills(user_prompt)
-        skill_context = ""
-        if relevant_skills:
-            skill_context = "\n【本地技能库中的成功经验】\n以下是你过去成功写过的类似代码，你可以直接复用或参考它们的 API 调用方式：\n"  # noqa: E501
-            for s in relevant_skills:
-                skill_context += f"💡 意图: {s['intent']}\n```python\n{s['code']}\n```\n\n"
-            if on_thought_cb:
-                on_thought_cb(f"⚡ 唤醒了 {len(relevant_skills)} 条历史成功经验！")
+        # ============== 2. ReAct 重试循环 ==============
+        for step in range(self.max_steps):
+            cbs.thought(f"⚙️ 正在生成代码 (第 {step + 1} 次尝试)...")
 
-        # 将 RAG 内容动态注入到 System Prompt
-        # 注入自适应教学策略（如果学生模型可用）
-        adaptive_context = ""
-        if self._adaptive_engine:
-            adaptive_context = self._adaptive_engine.build_adaptive_prompt(user_prompt)
-            if on_thought_cb:
-                profile = self.student_model.get_profile_summary()
-                on_thought_cb(
-                    f"🎓 已加载学生认知画像："
-                    f"认知层级={profile['cognitive_level']}，"
-                    f"偏好={profile['learning_style']}，"
-                    f"掌握度={profile['avg_mastery']}"
-                )
+            code_content = self._llm_generate_code(messages)
+            cbs.code(code_content)
 
-        # 注入教学法约束（代码生成质量指导）
-        pedagogical_context = ""
-        if self.student_model is not None:
-            from mathlab.core.pedagogical_engine import PedagogicalPromptBuilder
+            execution_result = self._execute_code(code_content)
 
-            pedagogical_builder = PedagogicalPromptBuilder(self.student_model)
-            pedagogical_context = pedagogical_builder.build_code_generation_constraint(user_prompt)
+            if execution_result.get("status") == "ok":
+                return self._finalize_success(user_prompt, code_content, execution_result, cbs)
 
-        # 文件式记忆：优先复用 AIManager 上的实例，缺失时退回进程单例
-        memory_context = ""
-        file_memory = getattr(self.ai_manager, "file_memory", None) or get_file_memory()
-        try:
-            memory_context = file_memory.get_context_block()
-        except Exception as exc:  # noqa: BLE001 - 记忆层故障不得阻断推理闭环
-            logger.warning("装配文件式记忆失败，本次推理跳过: %s", exc)
+            error_msg = execution_result.get("error", "未知错误")
+            cbs.thought(f"❌ 代码报错 (第 {step + 1} 次尝试), 正在修正...\n报错内容: {error_msg}")
+            self._append_failure_feedback(messages, code_content, error_msg)
+
+        cbs.finish(False, "超出最大重试次数")
+
+        # 记录失败互动（自适应学习：追踪薄弱点）
+        if self.student_model and self._adaptive_engine:
+            self._record_student_interaction(user_prompt, success=False)
+
+        return {"status": "failed", "error": "超出最大重试次数"}
+
+    # ------------------------------------------------------------------
+    # solve_problem 的各个环节（拆开以压低单函数圈复杂度）
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _replay_cached_result(cached: dict, cbs: "SolveCallbacks") -> dict:
+        """推理缓存命中：直接把历史结果喂给回调，跳过 LLM 调用。"""
+        cbs.thought("📦 推理缓存命中！直接复用历史结果，跳过 LLM 调用。")
+        cbs.code(cached.get("code", ""))
+        geom_cmds = cached.get("geom_commands", [])
+        if geom_cmds:
+            cbs.geom(geom_cmds)
+        cbs.finish(True, cached.get("code", ""))
+        return cached
+
+    def _build_initial_messages(self, user_prompt: str, cbs: "SolveCallbacks") -> list:
+        """装配首轮 messages：系统提示 + 用户任务。"""
+        cbs.thought("🔍 正在检索本地技能库记忆...")
+
+        skill_context = self._build_skill_context(user_prompt, cbs)
+        adaptive_context = self._build_adaptive_context(user_prompt, cbs)
+        pedagogical_context = self._build_pedagogical_context(user_prompt)
+        memory_context = self._build_memory_context()
 
         system_prompt = f"""{self.system_prompt}
 {memory_context}
@@ -815,92 +910,117 @@ class BaseMathAgent:
 {pedagogical_context}
 不要输出多余的 Markdown，必须且只能将代码写在 ```python 块中。"""
 
-        messages = [
+        return [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": f"任务：{user_prompt}"},
         ]
 
-        for step in range(self.max_steps):
-            if on_thought_cb:
-                on_thought_cb(f"⚙️ 正在生成代码 (第 {step + 1} 次尝试)...")
+    def _build_skill_context(self, user_prompt: str, cbs: "SolveCallbacks") -> str:
+        """RAG：从本地技能库检索历史成功经验，拼成提示片段。"""
+        relevant_skills = self.skill_lib.retrieve_relevant_skills(user_prompt)
+        if not relevant_skills:
+            return ""
 
-            code_content = self._llm_generate_code(messages)
+        context = (
+            "\n【本地技能库中的成功经验】\n"
+            "以下是你过去成功写过的类似代码，你可以直接复用或参考它们的 API 调用方式：\n"
+        )
+        for s in relevant_skills:
+            context += f"💡 意图: {s['intent']}\n```python\n{s['code']}\n```\n\n"
+        cbs.thought(f"⚡ 唤醒了 {len(relevant_skills)} 条历史成功经验！")
+        return context
 
-            if on_code_cb:
-                on_code_cb(code_content)
+    def _build_adaptive_context(self, user_prompt: str, cbs: "SolveCallbacks") -> str:
+        """自适应教学策略（依赖学生认知模型，没有则为空串）。"""
+        if not self._adaptive_engine:
+            return ""
 
-            # 执行代码
-            try:
-                execution_result_str = execute_math_task(code_content)
-                if isinstance(execution_result_str, dict):
-                    execution_result = execution_result_str
-                else:
-                    execution_result = json.loads(execution_result_str)
-            except Exception as e:
-                execution_result = {"status": "error", "error": str(e)}
+        context = self._adaptive_engine.build_adaptive_prompt(user_prompt)
+        profile = self.student_model.get_profile_summary()
+        cbs.thought(
+            f"🎓 已加载学生认知画像："
+            f"认知层级={profile['cognitive_level']}，"
+            f"偏好={profile['learning_style']}，"
+            f"掌握度={profile['avg_mastery']}"
+        )
+        return context
 
-            if execution_result.get("status") == "ok":
-                # 提取沙箱中累积的几何绘图命令
-                geom_commands = execution_result.get("geom_commands", [])
-                if geom_commands and on_geom_cb:
-                    on_geom_cb(geom_commands)
+    def _build_pedagogical_context(self, user_prompt: str) -> str:
+        """教学法约束（Bloom/ZPD/UDL/Socratic），没有学生模型则为空串。"""
+        if self.student_model is None:
+            return ""
 
-                if on_thought_cb:
-                    on_thought_cb(f"✅ 沙箱执行成功！输出:\n{execution_result.get('output', '')}")
+        from mathlab.core.pedagogical_engine import PedagogicalPromptBuilder
 
-                # ============== 2. 触发后台"自我提炼"机制 ==============
-                threading.Thread(
-                    target=self._reflect_and_save_skill,
-                    args=(user_prompt, code_content),
-                    daemon=True,
-                ).start()
+        builder = PedagogicalPromptBuilder(self.student_model)
+        return builder.build_code_generation_constraint(user_prompt)
 
-                # ============== 3. 推理缓存存储 ==============
-                cache_result = {
-                    "status": "ok",
-                    "code": code_content,
-                    "result": execution_result.get("output", ""),
-                    "geom_commands": geom_commands,
-                }
-                self._reasoning_cache.put(user_prompt, cache_result)
+    def _build_memory_context(self) -> str:
+        """文件式记忆上下文；记忆层故障不得阻断推理闭环。"""
+        try:
+            file_memory = getattr(self.ai_manager, "file_memory", None) or get_file_memory()
+            return file_memory.get_context_block()
+        except Exception as exc:  # noqa: BLE001 - 记忆层是旁路，坏了就当没有
+            logger.warning("装配文件式记忆失败，本次推理跳过: %s", exc)
+            return ""
 
-                # ============== 4. 记录学生互动（自适应学习） ==============
-                if self.student_model and self._adaptive_engine:
-                    self._record_student_interaction(user_prompt, success=True)
+    @staticmethod
+    def _execute_code(code_content: str) -> dict:
+        """把代码丢进沙箱执行，异常统一收敛成 ``{"status": "error"}``。"""
+        try:
+            raw = execute_math_task(code_content)
+            if isinstance(raw, dict):
+                return raw
+            return json.loads(raw)
+        except Exception as e:
+            return {"status": "error", "error": str(e)}
 
-                if on_finish_cb:
-                    on_finish_cb(True, code_content)
-                return cache_result
-            else:
-                error_msg = execution_result.get("error", "未知错误")
-                if on_thought_cb:
-                    on_thought_cb(
-                        f"❌ 代码报错 (第 {step + 1} 次尝试), 正在修正...\n报错内容: {error_msg}"
-                    )  # noqa: E501
+    def _finalize_success(
+        self,
+        user_prompt: str,
+        code_content: str,
+        execution_result: dict,
+        cbs: "SolveCallbacks",
+    ) -> dict:
+        """沙箱执行成功后的收尾：回传几何命令 + 后台提炼 + 写缓存 + 记录互动。"""
+        geom_commands = execution_result.get("geom_commands", [])
+        if geom_commands:
+            cbs.geom(geom_commands)
 
-                # 将报错信息加入对话历史，让 AI 修正
-                messages.append({"role": "assistant", "content": f"```python\n{code_content}\n```"})
-                messages.append(
-                    {
-                        "role": "user",
-                        "content": f"执行失败，报错如下：\n{error_msg}\n请修正代码。",
-                    }
-                )  # noqa: E501
+        cbs.thought(f"✅ 沙箱执行成功！输出:\n{execution_result.get('output', '')}")
 
-                # BUG 6 修复：限制历史消息数量，避免上下文无限增长
-                # 保留 system + 初始 user（前2条）+ 最近3轮对话（6条）
-                MAX_HISTORY_MSGS = 8
-                if len(messages) > MAX_HISTORY_MSGS:
-                    messages = messages[:2] + messages[-(MAX_HISTORY_MSGS - 2) :]
+        # 后台"自我提炼"：把这次跑通的代码抽象成通用函数入库
+        threading.Thread(
+            target=self._reflect_and_save_skill,
+            args=(user_prompt, code_content),
+            daemon=True,
+        ).start()
 
-        if on_finish_cb:
-            on_finish_cb(False, "超出最大重试次数")
+        cache_result = {
+            "status": "ok",
+            "code": code_content,
+            "result": execution_result.get("output", ""),
+            "geom_commands": geom_commands,
+        }
+        self._reasoning_cache.put(user_prompt, cache_result)
 
-        # 记录失败互动（自适应学习：追踪薄弱点）
         if self.student_model and self._adaptive_engine:
-            self._record_student_interaction(user_prompt, success=False)
+            self._record_student_interaction(user_prompt, success=True)
 
-        return {"status": "failed", "error": "超出最大重试次数"}
+        cbs.finish(True, code_content)
+        return cache_result
+
+    def _append_failure_feedback(self, messages: list, code_content: str, error_msg: str) -> None:
+        """把报错信息追加进对话历史，让 AI 下一次尝试自行修正。"""
+        messages.append({"role": "assistant", "content": f"```python\n{code_content}\n```"})
+        messages.append(
+            {
+                "role": "user",
+                "content": f"执行失败，报错如下：\n{error_msg}\n请修正代码。",
+            }
+        )
+        if len(messages) > self.MAX_HISTORY_MSGS:
+            messages[:] = messages[:2] + messages[-(self.MAX_HISTORY_MSGS - 2) :]
 
     def _record_student_interaction(self, user_prompt: str, success: bool):
         """记录学生互动到认知模型中（自适应学习核心）。"""
@@ -943,516 +1063,6 @@ class BaseMathAgent:
         except Exception as e:
             # SUGGESTION 11 修复：使用 logger 替代 print
             logger.error(f"技能提炼失败 (后台线程): {e}")
-
-
-class PlannerAgent(BaseMathAgent):
-    """教研组长 —— 多智能体自治系统的顶层调度者。
-
-    职责：
-    1. 将用户的数学问题拆解为 3-5 个由浅入深的教学步骤
-    2. 调度 GeometryAgent / DataVizAgent 执行每一步（支持串行/并行模式）
-    3. 汇总结果并给出最终教学总结
-    """
-
-    def __init__(
-        self,
-        ai_manager,
-        agent_registry=None,
-        model_override=None,
-        resource_config=None,
-        parallel_execution=False,
-        max_workers=3,
-        student_model=None,
-    ):
-        super().__init__(
-            ai_manager,
-            model_override=model_override,
-            resource_config=resource_config or ResourceConfig.for_agent("PlannerAgent"),
-            student_model=student_model,
-        )
-        self.agent_registry = agent_registry  # 持有全局路由大脑，用于子任务委派
-        # 并行执行配置：当 parallel_execution=True 时，独立步骤可并行调度
-        self.parallel_execution = parallel_execution
-        self.max_workers = max_workers  # ThreadPoolExecutor 最大并发数
-        # 教学法引导引擎：注入 Bloom/ZPD/UDL/Socratic 约束
-        self._pedagogical_builder = None
-        self._quality_evaluator = None
-        if student_model is not None:
-            from mathlab.core.pedagogical_engine import (
-                PedagogicalPromptBuilder,
-                TeachingQualityEvaluator,
-            )
-
-            self._pedagogical_builder = PedagogicalPromptBuilder(student_model)
-            self._quality_evaluator = TeachingQualityEvaluator(student_model)
-        self.system_prompt = """你是一个【数学教研组长 (PlannerAgent)】。
-你的核心职责是分析用户的数学问题，将其拆解为 3-5 个由浅入深、循序渐进的教学步骤，
-然后协调解析几何专家和数据可视化专家共同完成教学。
-教学过程中禁止直接给出最终答案——要通过引导式提问让学生自己发现规律。
-你的输出必须是严格的 JSON，不要包含任何其他文本。"""
-
-    def _decompose_problem(self, user_prompt: str) -> dict:
-        """
-        调用 LLM 将用户问题拆解为教学大纲。
-        返回格式: {"topic": "...", "steps": [{"num": 1, "title": "...", "hint_for_teacher": "...", "parallelizable": false}]}
-        parallelizable=true 表示该步骤可与其他可并行步骤同时执行。
-        """
-        # 注入自适应教学策略（基于学生认知画像）
-        adaptive_strategy = ""
-        if self._adaptive_engine:
-            adaptive_strategy = self._adaptive_engine.build_adaptive_prompt(user_prompt)
-
-        # 注入教学法约束（Bloom/ZPD/UDL/Socratic）
-        pedagogical_constraint = ""
-        if self._pedagogical_builder:
-            pedagogical_constraint = self._pedagogical_builder.build_decomposition_constraint()
-
-        decompose_prompt = f"""请将以下数学问题拆解为 3-5 个由浅入深、循序渐进的教学步骤。
-
-用户问题：{user_prompt}
-{adaptive_strategy}
-{pedagogical_constraint}
-
-你必须严格按照以下 JSON 格式返回，不要包含任何其他文本：
-{{
-    "topic": "本次课题的主题",
-    "steps": [
-        {{"num": 1, "title": "第一步标题", "hint_for_teacher": "给授课老师的提示", "cognitive_level": "记忆/理解/应用/分析/评价/创造", "parallelizable": false}},
-        {{"num": 2, "title": "第二步标题", "hint_for_teacher": "给授课老师的提示", "cognitive_level": "记忆/理解/应用/分析/评价/创造", "parallelizable": false}}
-    ]
-}}
-
-要求：
-1. 步骤从易到难，逐步引导，每个步骤标注 Bloom 认知层级
-2. 每个步骤聚焦一个核心探索点
-3. 不要一次性给最终答案
-4. 如果涉及画图，优先在前几步让几何专家画图
-5. parallelizable 设为 true 仅当该步骤不依赖任何前序步骤的输出结果（如独立画图、独立计算）
-6. 根据学生认知画像调整步骤难度梯度，确保在最近发展区内
-7. 认知层级必须大致递增（如：记忆→理解→应用→分析），不要跳级超过2层
-8. 每个步骤只引入一个新概念，后续步骤建立在前序成果之上"""
-        try:
-            response = self.ai_manager.client.chat.completions.create(
-                model=self._get_effective_model(),
-                messages=[{"role": "user", "content": decompose_prompt}],
-                temperature=0.3,
-                timeout=30,
-                response_format={"type": "json_object"},
-            )
-            plan = json.loads(response.choices[0].message.content)
-            return plan
-        except Exception:
-            # 降级：返回一个极简大纲
-            return {
-                "topic": user_prompt,
-                "steps": [
-                    {
-                        "num": 1,
-                        "title": "理解问题与分析已知条件",
-                        "hint_for_teacher": "引导学生识别问题类型和关键数值",
-                        "parallelizable": False,
-                    },
-                    {
-                        "num": 2,
-                        "title": "建立数学模型与计算方法",
-                        "hint_for_teacher": "将文字描述转化为方程或几何图形",
-                        "parallelizable": False,
-                    },
-                    {
-                        "num": 3,
-                        "title": "执行计算并验证结果",
-                        "hint_for_teacher": "通过数值计算或画图展示答案并检查合理性",
-                        "parallelizable": False,
-                    },
-                ],
-            }
-
-    def _pick_sub_agent(self, step_title: str, hint: str) -> str:
-        """根据步骤标题和提示文本，推断应该派发给哪个子 Agent。
-        返回 AgentRegistry 中注册的名字（如 'GeometryAgent' 或 'DataVizAgent'）。
-        """
-        combined = f"{step_title} {hint}".lower()
-        viz_keywords = [
-            "图表",
-            "可视化",
-            "数据",
-            "统计",
-            "echarts",
-            "柱状图",
-            "折线图",
-            "饼图",
-            "散点图",
-            "3d曲面",
-            "玫瑰图",
-            "热力图",
-        ]
-
-        # BUG 7 修复：动态查找已注册的 Agent，而非硬编码名称
-        registry = getattr(self, "agent_registry", None)
-        if not registry or not registry.agents:
-            return "GeometryAgent"
-
-        # 优先查找 DataViz 相关专家
-        for name, info in registry.agents.items():
-            desc = info.get("description", "").lower()
-            if any(kw in desc for kw in ["可视化", "图表", "echarts"]):
-                if any(kw in combined for kw in viz_keywords):
-                    return name
-
-        # 默认查找几何专家
-        for name, info in registry.agents.items():
-            desc = info.get("description", "").lower()
-            if any(kw in desc for kw in ["几何", "geometry"]):
-                return name
-
-        # 回退到第一个注册的 Agent（排除自身 PlannerAgent）
-        for name in registry.agents:
-            if name != "PlannerAgent":
-                return name
-
-        return list(registry.agents.keys())[0] if registry.agents else "GeometryAgent"
-
-    def solve_problem(
-        self,
-        user_prompt: str,
-        on_thought_cb=None,
-        on_code_cb=None,
-        on_finish_cb=None,
-        on_geom_cb=None,
-    ):
-        """教研组长的核心调度闭环：拆解 → 串行委派 → 汇总。"""
-
-        if getattr(self.ai_manager, "client", None) is None:
-            if on_thought_cb:
-                on_thought_cb("❌ 未配置 AI API Key，无法启动教研调度。")
-            if on_finish_cb:
-                on_finish_cb(False, "未配置 API Key")
-            return {"status": "failed", "error": "未配置 API Key"}
-
-        # 生成会话 ID，关联本轮对话的所有 Agent 间消息
-        import uuid as _uuid
-
-        self._conversation_id = str(_uuid.uuid4())[:8]
-
-        # 通过消息总线广播教学任务开始
-        if self._message_bus:
-            from mathlab.core.agent_message import MessageType
-
-            self.send_message(
-                receiver_id="broadcast",
-                msg_type=MessageType.NOTIFICATION,
-                content=f"教学任务启动: {user_prompt[:50]}",
-                conversation_id=self._conversation_id,
-                topic="数学教学",
-            )
-
-        # ========== 阶段 1: 拆解教学大纲 ==========
-        if on_thought_cb:
-            on_thought_cb("🧠 教研组长正在分析问题，制定教学大纲...")
-
-        # 显示学生认知画像（自适应教学）
-        if self.student_model and self._adaptive_engine:
-            profile = self.student_model.get_profile_summary()
-            comfort, stretch = self.student_model.get_zpd_zone()
-            if on_thought_cb:
-                on_thought_cb(
-                    f"🎓 学生画像加载完成：\n"
-                    f"  ├─ 认知层级：{profile['cognitive_level']}\n"
-                    f"  ├─ 学习偏好：{profile['learning_style']}\n"
-                    f"  ├─ 平均掌握度：{profile['avg_mastery']}\n"
-                    f"  ├─ 参与度：{profile['engagement']}\n"
-                    f"  ├─ ZPD区间：{comfort.to_chinese()} → {stretch.to_chinese()}\n"
-                    f"  └─ 薄弱知识点：{', '.join(profile['weakness_areas']) or '无'}"
-                )
-
-        plan = self._decompose_problem(user_prompt)
-        topic = plan.get("topic", user_prompt)
-        steps = plan.get("steps", [])
-
-        if not steps:
-            if on_thought_cb:
-                on_thought_cb("⚠️ 教学大纲生成失败，回退到通用求解模式。")
-            # 回退到基类的纯代码闭环
-            return super().solve_problem(user_prompt, on_thought_cb, on_code_cb, on_finish_cb, on_geom_cb)
-
-        # 输出大纲
-        if on_thought_cb:
-            on_thought_cb(f"📋 课题：{topic}")
-            for s in steps:
-                on_thought_cb(f"  ├─ 步骤 {s['num']}: {s['title']}" f"（💡 {s.get('hint_for_teacher', '')}）")
-
-        # ========== 阶段 2: 调度子 Agent（支持串行/并行模式）==========
-        all_codes: list[str] = []
-        all_geom_commands: list = []
-
-        # 将步骤分为可并行组和串行组
-        parallel_steps = []
-        serial_steps = []
-        if self.parallel_execution:
-            for step in steps:
-                if step.get("parallelizable", False):
-                    parallel_steps.append(step)
-                else:
-                    serial_steps.append(step)
-        else:
-            serial_steps = steps
-
-        # 执行单个子步骤的通用函数（可在线程池中调用）
-        def _execute_single_step(step):
-            """执行单个教学步骤，返回 (num, success, code, geom_commands)"""
-            num = step.get("num", 0)
-            title = step.get("title", "处理中...")
-            hint = step.get("hint_for_teacher", "")
-            cognitive_level = step.get("cognitive_level", "理解")
-
-            sub_prompt = f"在教学主题「{topic}」的框架下，完成第 {num} 步：{title}。" f"\n教学提示：{hint}"
-
-            # 注入教学法约束到子步骤（Bloom 层级行为指导）
-            if self._pedagogical_builder:
-                step_constraint = self._pedagogical_builder.build_step_execution_constraint(
-                    step_title=title,
-                    cognitive_level=cognitive_level,
-                    hint=hint,
-                )
-                sub_prompt += f"\n\n{step_constraint}"
-
-            agent_key = self._pick_sub_agent(title, hint)
-            agent_name = agent_key
-            if hasattr(self, "agent_registry") and self.agent_registry:
-                sub_info = self.agent_registry.agents.get(agent_key)
-            else:
-                sub_info = None
-
-            if on_thought_cb:
-                on_thought_cb(f"\n{'─' * 20}\n📖 第 {num} 步：{title}")
-                on_thought_cb(f"  🎯 调度：{agent_name}")
-                if hint:
-                    on_thought_cb(f"  💡 提示：{hint}")
-
-            # 通过消息总线广播本步骤的意图（仅用于可观测性）。
-            # [P1 修复] 这里原先发的是 TASK_REQUEST：MessageRouter 收到后会**同步**调用
-            # 目标 Agent 的 solve_problem（agent_message.py:373→392→427），而下面第
-            # 1374 行又直接调了一次 —— 每个子任务被执行两遍（双份 token 花费、
-            # 代码与几何命令重复回传）。总线路径产出的 TASK_RESULT 全仓没有任何订阅者，
-            # 所以真正的执行路径是下面的直调；总线上行降级为 NOTIFICATION（只记日志）。
-            if self._message_bus:
-                from mathlab.core.agent_message import MessageType
-
-                self.send_message(
-                    receiver_id=agent_key,
-                    msg_type=MessageType.NOTIFICATION,
-                    content=f"[Step {num}] 计划派发: {title} -> {agent_name}",
-                    step_num=num,
-                    cognitive_level=cognitive_level,
-                    topic=topic,
-                    conversation_id=self._conversation_id,
-                )
-
-            if sub_info is None:
-                if on_thought_cb:
-                    on_thought_cb(f"  ⚠️ 子 Agent「{agent_key}」未注册，正在自行执行...")
-
-                def _noop_finish_cb(success, content):
-                    pass
-
-                result = super(PlannerAgent, self).solve_problem(
-                    sub_prompt,
-                    on_thought_cb=on_thought_cb,
-                    on_code_cb=on_code_cb,
-                    on_finish_cb=_noop_finish_cb,
-                    on_geom_cb=on_geom_cb,
-                )
-                if isinstance(result, dict) and result.get("status") == "ok":
-                    return (
-                        num,
-                        True,
-                        result.get("code", ""),
-                        result.get("geom_commands", []),
-                    )
-                return (num, False, "", [])
-
-            sub_agent = sub_info["instance"]
-
-            # 收集子 Agent 的输出（前缀标记以示区分）
-            step_result = {"success": False, "code": "", "geom": []}
-
-            def make_sub_thought_cb(step_num):
-                def _cb(text):
-                    if on_thought_cb:
-                        on_thought_cb(f"  [Step {step_num}] {text}")
-
-                return _cb
-
-            def make_sub_code_cb():
-                def _cb(code):
-                    if on_code_cb:
-                        on_code_cb(code)
-                    step_result["code"] = code
-
-                return _cb
-
-            def make_sub_finish_cb():
-                def _cb(success, content):
-                    step_result["success"] = success
-                    if success and content:
-                        step_result["code"] = content
-
-                return _cb
-
-            def make_sub_geom_cb():
-                def _cb(cmds):
-                    step_result["geom"].extend(cmds)
-                    if on_geom_cb:
-                        on_geom_cb(cmds)
-
-                return _cb
-
-            try:
-                sub_result = sub_agent.solve_problem(
-                    sub_prompt,
-                    on_thought_cb=make_sub_thought_cb(num),
-                    on_code_cb=make_sub_code_cb(),
-                    on_finish_cb=make_sub_finish_cb(),
-                    on_geom_cb=make_sub_geom_cb(),
-                )
-                if isinstance(sub_result, dict) and sub_result.get("status") == "ok":
-                    step_result["success"] = True
-                    step_result["code"] = sub_result.get("code", "")
-                    step_result["geom"].extend(sub_result.get("geom_commands", []))
-            except Exception as e:
-                if on_thought_cb:
-                    on_thought_cb(f"  ❌ 子 Agent「{agent_name}」执行异常: {e}")
-
-            # 通过消息总线发送任务进度消息
-            if self._message_bus:
-                from mathlab.core.agent_message import MessageType
-
-                self.send_message(
-                    receiver_id="broadcast",
-                    msg_type=MessageType.TASK_PROGRESS,
-                    content=f"步骤 {num} 完成: {title} ({'成功' if step_result['success'] else '失败'})",
-                    step_num=num,
-                    success=step_result["success"],
-                    conversation_id=self._conversation_id,
-                )
-
-            return (
-                num,
-                step_result["success"],
-                step_result["code"],
-                step_result["geom"],
-            )
-
-        # 并行执行可并行步骤
-        if parallel_steps:
-            if on_thought_cb:
-                on_thought_cb(f"🚀 启动并行执行模式：{len(parallel_steps)} 个独立步骤同时调度...")
-
-            from concurrent.futures import ThreadPoolExecutor, as_completed
-
-            with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
-                future_to_step = {executor.submit(_execute_single_step, step): step for step in parallel_steps}
-                parallel_results = {}
-                for future in as_completed(future_to_step):
-                    step = future_to_step[future]
-                    try:
-                        num, success, code, geom_cmds = future.result()
-                        parallel_results[num] = (success, code, geom_cmds)
-                        if on_thought_cb:
-                            if success:
-                                on_thought_cb(f"  ✅ 第 {num} 步完成 (并行)")
-                            else:
-                                on_thought_cb(f"  ⚠️ 第 {num} 步未能产出完整结果 (并行)")
-                    except Exception as e:
-                        if on_thought_cb:
-                            on_thought_cb(f"  ❌ 并行步骤异常: {e}")
-
-            # 按 step num 排序收集结果
-            for num in sorted(parallel_results.keys()):
-                success, code, geom_cmds = parallel_results[num]
-                all_geom_commands.extend(geom_cmds)
-                if success and code:
-                    all_codes.append(code)
-
-        # 串行执行依赖步骤
-        for step in serial_steps:
-            num, success, code, geom_cmds = _execute_single_step(step)
-            all_geom_commands.extend(geom_cmds)
-            if success and code:
-                all_codes.append(code)
-                if on_thought_cb:
-                    on_thought_cb(f"  ✅ 第 {num} 步完成")
-            else:
-                if on_thought_cb:
-                    on_thought_cb(f"  ⚠️ 第 {num} 步未能产出完整结果，继续下一步")
-
-        # ========== 阶段 3: 汇总 + 教学质量评估 ==========
-        final_code = "\n\n# ---- Planner 聚合代码 ----\n" + "\n\n".join(all_codes)
-        if on_thought_cb:
-            on_thought_cb(f"\n{'─' * 20}\n🏁 教研组已完成所有教学步骤！")
-
-        # 教学质量评估闭环：评估生成内容并反馈
-        quality_report = None
-        if self._quality_evaluator:
-            quality_report = self._run_quality_evaluation(final_code, user_prompt, plan, on_thought_cb)
-
-        if on_finish_cb:
-            on_finish_cb(True, final_code)
-        result = {
-            "status": "ok",
-            "code": final_code,
-            "topic": topic,
-            "steps_executed": len(steps),
-            "geom_commands": all_geom_commands,
-        }
-        if quality_report:
-            result["quality_report"] = quality_report
-        return result
-
-    def _run_quality_evaluation(
-        self,
-        content: str,
-        user_prompt: str,
-        plan: dict,
-        on_thought_cb=None,
-    ) -> dict:
-        """执行教学质量评估并生成报告。
-
-        评估三维度：内容理解、上下文连贯性、教学设计。
-        如果评估不通过，将改进反馈注入到后续 Agent 对话中。
-        """
-        try:
-            from mathlab.core.pedagogical_engine import QualityDimension
-
-            reports = self._quality_evaluator.evaluate(
-                content=content,
-                user_prompt=user_prompt,
-                plan=plan,
-            )
-            overall = self._quality_evaluator.get_overall_score(reports)
-
-            if on_thought_cb:
-                dim_names = {
-                    QualityDimension.CONTENT_UNDERSTANDING: "内容理解",
-                    QualityDimension.CONTEXT_COHERENCE: "连贯性",
-                    QualityDimension.PEDAGOGICAL_DESIGN: "教学设计",
-                }
-                on_thought_cb(f"\n📊 教学质量评估完成（总分: {overall:.0%}）:")
-                for dim, report in reports.items():
-                    icon = "✅" if report.passed else "❌"
-                    name = dim_names.get(dim, dim.value)
-                    on_thought_cb(
-                        f"  {icon} {name}: {report.score:.0%}" + (f" — {report.issues[0]}" if report.issues else "")
-                    )
-
-            # 序列化报告
-            return {
-                "overall_score": overall,
-                "dimensions": {dim.value: report.to_dict() for dim, report in reports.items()},
-            }
-        except Exception as e:
-            logger.error(f"教学质量评估失败: {e}")
-            return None
 
 
 class GeometryAgent(BaseMathAgent):
