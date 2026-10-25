@@ -184,8 +184,9 @@ class AIManager(QObject):
         try:
             package_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             settings_path = os.path.join(package_dir, "settings.json")
-        except Exception:
+        except Exception as exc:
             # 降级方案：使用当前文件路径
+            logger.warning("定位 settings.json 失败，回退到当前工作目录: %s", exc, exc_info=True)
             settings_path = os.path.join(os.getcwd(), "settings.json")
 
         settings = {}
@@ -194,7 +195,7 @@ class AIManager(QObject):
                 with open(settings_path, "r", encoding="utf-8") as f:
                     settings = json.load(f)
             except Exception as e:
-                logger.error(f"加载 settings.json 失败: {e}")
+                logger.error("加载 settings.json 失败: %s", e, exc_info=True)
 
         api_key = settings.get("ai_api_key", "")
         base_url = settings.get("ai_base_url", "https://api.deepseek.com/v1")
@@ -255,7 +256,7 @@ class AIManager(QObject):
         try:
             memory_block = self.file_memory.get_context_block()
         except Exception as exc:  # noqa: BLE001 - 记忆层故障不得阻断对话
-            logger.warning("装配文件式记忆失败，本次请求跳过: %s", exc)
+            logger.warning("装配文件式记忆失败，本次请求跳过: %s", exc, exc_info=True)
             memory_block = ""
         if memory_block:
             dynamic_system_prompt = (
@@ -310,6 +311,7 @@ class AIManager(QObject):
                 "message": f"Model {model_name} loaded successfully",
             }
         except Exception as e:
+            logger.warning("加载 ONNX 模型 %s 失败: %s", model_name, e, exc_info=True)
             return {"success": False, "error": str(e)}
 
     def predict(self, model_name, input_data):
@@ -326,6 +328,7 @@ class AIManager(QObject):
 
             return {"success": True, "prediction": result[0].tolist()}
         except Exception as e:
+            logger.warning("模型 %s 推理失败: %s", model_name, e, exc_info=True)
             return {"success": False, "error": str(e)}
 
     def fit_linear_regression(self, points):
@@ -518,6 +521,7 @@ class AIManager(QObject):
                 "top3": [{"digit": d, "probability": p} for d, p in zip(top3_digits, top3_probs)],  # noqa: E501
             }
         except Exception as e:
+            logger.warning("手写数字识别失败: %s", e, exc_info=True)
             return {"success": False, "error": str(e)}
 
     def generate_random_points(self, n=10, x_range=(0, 100), y_range=(0, 100)):
@@ -557,7 +561,7 @@ class ReasoningCache:
                 with open(self._cache_path, "r", encoding="utf-8") as f:
                     self._cache = json.load(f)
             except Exception as e:
-                logger.error(f"加载推理缓存失败: {e}")
+                logger.error("加载推理缓存失败: %s", e, exc_info=True)
                 self._cache = []
 
     def _save(self):
@@ -603,7 +607,7 @@ class ReasoningCache:
                         logger.info(f"📦 推理缓存相似命中 (sim={sims[best_idx]:.3f}): " f"{user_prompt[:40]}...")
                         return self._cache[best_idx]["result"]
                 except Exception as e:
-                    logger.error(f"缓存相似度检索失败: {e}")
+                    logger.error("缓存相似度检索失败: %s", e, exc_info=True)
 
             return None
 
@@ -813,7 +817,7 @@ class BaseMathAgent:
             return suggestion
         except Exception as e:
             # SUGGESTION 11 修复：使用 logger 替代 print
-            logger.error(f"LLM Generate Code Error: {e}")
+            logger.error("LLM Generate Code Error: %s", e, exc_info=True)
             return "print('Error generating code')"
 
     # 对话历史裁剪：保留 system + 初始 user（前 2 条）+ 最近 3 轮对话（6 条），
@@ -961,7 +965,7 @@ class BaseMathAgent:
             file_memory = getattr(self.ai_manager, "file_memory", None) or get_file_memory()
             return file_memory.get_context_block()
         except Exception as exc:  # noqa: BLE001 - 记忆层是旁路，坏了就当没有
-            logger.warning("装配文件式记忆失败，本次推理跳过: %s", exc)
+            logger.warning("装配文件式记忆失败，本次推理跳过: %s", exc, exc_info=True)
             return ""
 
     @staticmethod
@@ -973,6 +977,7 @@ class BaseMathAgent:
                 return raw
             return json.loads(raw)
         except Exception as e:
+            logger.warning("沙箱代码执行失败: %s", e, exc_info=True)
             return {"status": "error", "error": str(e)}
 
     def _finalize_success(
@@ -1036,7 +1041,7 @@ class BaseMathAgent:
                 cognitive_demand=cognitive_demand,
             )
         except Exception as e:
-            logger.error(f"记录学生互动失败: {e}")
+            logger.error("记录学生互动失败: %s", e, exc_info=True)
 
     def _reflect_and_save_skill(self, original_prompt, raw_code):
         """后台静默运行：让大模型把刚刚跑通的特定业务代码，抽象为通用函数库"""
@@ -1062,7 +1067,7 @@ class BaseMathAgent:
             self.skill_lib.save_skill(result_json["intent"], result_json["abstract_code"])
         except Exception as e:
             # SUGGESTION 11 修复：使用 logger 替代 print
-            logger.error(f"技能提炼失败 (后台线程): {e}")
+            logger.error("技能提炼失败 (后台线程): %s", e, exc_info=True)
 
 
 class GeometryAgent(BaseMathAgent):

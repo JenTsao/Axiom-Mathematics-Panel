@@ -61,7 +61,8 @@ class JupyterSandbox:
 
             jupyter_cfg = get_config("jupyter", {})
             self._memory_limit_mb = jupyter_cfg.get("memory_limit_mb", self._MEMORY_LIMIT_MB)
-        except Exception:
+        except Exception as exc:
+            logger.debug("读取 jupyter 内存限制配置失败，使用默认值: %s", exc, exc_info=True)
             self._memory_limit_mb = self._MEMORY_LIMIT_MB
 
         self._psutil_available = False
@@ -180,7 +181,8 @@ class JupyterSandbox:
                 except (self._psutil.NoSuchProcess, self._psutil.AccessDenied):
                     pass
             return mem / (1024 * 1024)
-        except Exception:
+        except Exception as exc:
+            logger.debug("读取 Jupyter 内存占用失败: %s", exc, exc_info=True)
             return None
 
     def _check_memory(self) -> None:
@@ -240,7 +242,8 @@ class JupyterManager:
             port_start = jupyter_cfg.get("port_start", 8888)
             port_end = jupyter_cfg.get("port_end", 8999)
             self._default_timeout = jupyter_cfg.get("start_timeout", 30)
-        except Exception:
+        except Exception as exc:
+            logger.debug("读取 jupyter 端口配置失败，使用默认范围: %s", exc, exc_info=True)
             port_start, port_end = 8888, 8999
             self._default_timeout = 30
 
@@ -318,7 +321,7 @@ class JupyterManager:
                 logger.error("无法找到 jupyter 命令，请确认 jupyterlab 已安装。")
                 return False
             except Exception as e:
-                logger.error("启动 JupyterLab 失败: %s", e)
+                logger.error("启动 JupyterLab 失败: %s", e, exc_info=True)
                 return False
 
             # 启动输出排空线程：JupyterLab 启动日志量大，若 PIPE 无人读取，
@@ -358,13 +361,13 @@ class JupyterManager:
                 if line:
                     self._output_tail.append(line)
                     logger.debug("JupyterLab: %s", line)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("JupyterLab 输出读取线程退出: %s", exc, exc_info=True)
         finally:
             try:
                 process.stdout.close()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("关闭 JupyterLab stdout 失败: %s", exc, exc_info=True)
 
     def _log_output_tail(self, max_lines: int = 30) -> None:
         """将子进程最近输出写入日志，便于诊断启动失败原因。"""
@@ -408,8 +411,8 @@ class JupyterManager:
                         return True
             except (urllib.error.URLError, ConnectionError, OSError):
                 pass
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Jupyter 就绪探测出现异常: %s", exc, exc_info=True)
 
             # 周期性输出等待进度，避免长时间静默
             now = time.time()
@@ -442,7 +445,7 @@ class JupyterManager:
                     self._process.wait(timeout=3)
                 logger.info("JupyterLab 服务器已停止。")
             except Exception as e:
-                logger.warning("停止 JupyterLab 服务器时出错: %s", e)
+                logger.warning("停止 JupyterLab 服务器时出错: %s", e, exc_info=True)
             finally:
                 self._process = None
                 self._url = ""
@@ -482,5 +485,5 @@ def shutdown_jupyter_sandbox() -> None:
                 try:
                     _jupyter_sandbox_instance.shutdown()
                 except Exception as e:
-                    logger.warning("关闭 JupyterSandbox 时出错: %s", e)
+                    logger.warning("关闭 JupyterSandbox 时出错: %s", e, exc_info=True)
                 _jupyter_sandbox_instance = None

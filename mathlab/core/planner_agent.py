@@ -326,6 +326,7 @@ class PlannerAgent(BaseMathAgent):
                         else:
                             on_thought_cb(f"  ⚠️ 第 {num} 步未能产出完整结果 (并行)")
                 except Exception as e:
+                    logger.error("并行步骤执行异常: %s", e, exc_info=True)
                     if on_thought_cb:
                         on_thought_cb(f"  ❌ 并行步骤异常: {e}")
 
@@ -471,6 +472,7 @@ class PlannerAgent(BaseMathAgent):
                 collector.code = sub_result.get("code", "")
                 collector.geom.extend(sub_result.get("geom_commands", []))
         except Exception as e:
+            logger.error("子 Agent「%s」执行异常: %s", agent_key, e, exc_info=True)
             if on_thought_cb:
                 on_thought_cb(f"  ❌ 子 Agent「{agent_key}」执行异常: {e}")
 
@@ -668,5 +670,5 @@ class PlannerAgent(BaseMathAgent):
                 "dimensions": {dim.value: report.to_dict() for dim, report in reports.items()},
             }
         except Exception as e:
-            logger.error("教学质量评估失败: %s", e)
+            logger.error("教学质量评估失败: %s", e, exc_info=True)
             return None

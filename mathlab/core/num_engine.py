@@ -113,7 +113,7 @@ class NumEngine:
                 return csharp.eigenvalues(np.asarray(matrix, dtype=float))
             except Exception as exc:
                 # C# 后端失败（如不支持的输入）时回退 NumPy
-                logger.debug("C# 特征值计算失败，回退 NumPy: %s", exc)
+                logger.debug("C# 特征值计算失败，回退 NumPy: %s", exc, exc_info=True)
 
         vals, vecs = la.eig(mat)
         return {
@@ -165,7 +165,7 @@ class NumEngine:
                 return csharp.cholesky(mat)
             except Exception as exc:
                 # C# 后端失败（如非正定矩阵）时回退 NumPy，保持统一异常语义
-                logger.debug("C# Cholesky 失败，回退 NumPy: %s", exc)
+                logger.debug("C# Cholesky 失败，回退 NumPy: %s", exc, exc_info=True)
 
         try:
             L = la.cholesky(mat, lower=True)
@@ -196,7 +196,7 @@ class NumEngine:
                 return csharp.solve_linear_system(mat_A, vec_b)
             except Exception as exc:
                 # C# 后端失败（如奇异矩阵）时回退 NumPy，保持统一异常语义
-                logger.debug("C# 线性求解失败，回退 NumPy: %s", exc)
+                logger.debug("C# 线性求解失败，回退 NumPy: %s", exc, exc_info=True)
 
         try:
             x = la.solve(mat_A, vec_b)
