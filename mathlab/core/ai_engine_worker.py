@@ -31,7 +31,9 @@ except ImportError:
         QT_AVAILABLE = True
     except ImportError:
         QT_AVAILABLE = False
-        QObject, QThread, Signal = object, object, object  # type: ignore[assignment, misc]
+        # Qt 绑定未打桩，mypy 下这三个符号是 Any；勿加 type: ignore，
+        # 否则 warn_unused_ignores=true 会把它判为 unused-ignore（下方 openai 分支不同）。
+        QObject, QThread, Signal = object, object, object
 
 try:
     from openai import (
