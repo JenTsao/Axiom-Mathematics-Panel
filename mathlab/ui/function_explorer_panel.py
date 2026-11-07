@@ -353,7 +353,7 @@ class FunctionExplorerPanel(QDockWidget):
             self.int_result_label.setText("计算中...")
             engine = get_cs_calculus()
             if engine is None:
-                raise RuntimeError("C# 微积分引擎不可用（pythonnet / .NET 缺失）")
+                raise RuntimeError(t("errors.cs_calculus_engine_unavailable"))
             area_val = engine.integrate_adaptive(fast_func, a, b, tol=1e-8)
 
             # 3. 更新 UI
@@ -389,7 +389,7 @@ class FunctionExplorerPanel(QDockWidget):
             self.deriv_result_label.setText("计算中...")
             engine = get_cs_calculus()
             if engine is None:
-                raise RuntimeError("C# 微积分引擎不可用（pythonnet / .NET 缺失）")
+                raise RuntimeError(t("errors.cs_calculus_engine_unavailable"))
             slope_k = engine.differentiate(fast_func, x0)
 
             # 2. 计算出具体函数值 y0

@@ -341,7 +341,10 @@
   "errors": {
     "invalid_expression": "Invalid expression",
     "python_repl_not_initialized": "Python REPL not initialized",
-    "canvas_cleared": "Canvas cleared"
+    "canvas_cleared": "Canvas cleared",
+    "cs_fractal_engine_unavailable": "C# fractal engine unavailable (pythonnet / .NET missing)",
+    "cs_calculus_engine_unavailable": "C# calculus engine unavailable (pythonnet / .NET missing)",
+    "cs_fft_engine_unavailable": "C# FFT engine unavailable (pythonnet / .NET missing)"
   },
   "function_explorer": {
     "title": "Function Explorer",

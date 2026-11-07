@@ -5,6 +5,7 @@ from PySide6.QtWidgets import QHBoxLayout, QLabel, QWidget
 
 from mathlab.core.async_workers import TaskManager
 from mathlab.core.cs_complex_engine import get_cs_complex
+from mathlab.utils.i18n_manager import t
 
 
 class FractalExplorer(QWidget):
@@ -87,7 +88,7 @@ class FractalExplorer(QWidget):
     def _render_julia_task(self, c_real, c_imag):
         engine = get_cs_complex()
         if engine is None:
-            raise RuntimeError("C# 分形引擎不可用（pythonnet / .NET 缺失）")
+            raise RuntimeError(t("errors.cs_fractal_engine_unavailable"))
         julia_matrix = engine.generate_julia_image(
             -2.0,
             2.0,

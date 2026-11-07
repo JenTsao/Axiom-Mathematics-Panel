@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
 )
 
 from mathlab.core.async_workers import TaskManager
+from mathlab.utils.i18n_manager import t
 
 # 尝试导入我们的底层引擎
 try:
@@ -221,7 +222,7 @@ class SignalLabPanel(QWidget):
             # 4. 呼叫 C# 引擎进行原地极速 FFT 分析
             engine = get_cs_fft()
             if engine is None:
-                raise RuntimeError("C# FFT 引擎不可用（pythonnet / .NET 缺失）")
+                raise RuntimeError(t("errors.cs_fft_engine_unavailable"))
             freqs, magnitudes = engine.analyze_spectrum(signal, self.sample_rate)
 
             # 5. 组装给 Echarts 的数据包

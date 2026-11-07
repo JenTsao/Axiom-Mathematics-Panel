@@ -341,7 +341,10 @@
   "errors": {
     "invalid_expression": "无效表达式",
     "python_repl_not_initialized": "Python REPL 未初始化",
-    "canvas_cleared": "画布已清空"
+    "canvas_cleared": "画布已清空",
+    "cs_fractal_engine_unavailable": "C# 分形引擎不可用（pythonnet / .NET 缺失）",
+    "cs_calculus_engine_unavailable": "C# 微积分引擎不可用（pythonnet / .NET 缺失）",
+    "cs_fft_engine_unavailable": "C# FFT 引擎不可用（pythonnet / .NET 缺失）"
   },
   "function_explorer": {
     "title": "函数探索器",
