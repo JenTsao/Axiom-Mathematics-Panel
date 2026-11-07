@@ -49,10 +49,15 @@ try:
     import clr  # noqa: E402
 
     clr.AddReference("MathLab.CSharpEngine")
+    # pythonnet 动态程序集导入：AddReference 必须先于本程序集导入；且 MathLab 在
+    # Linux（大小写敏感）与 Windows（不敏感，会误命中 mathlab/ 包）会被 isort 归入
+    # 不同分组，跨平台排序结论相反，故冻结本块顺序，避免 CI 与本地互相回改。
+    # isort: off
+    from MathLab.CSharpEngine import FastCalculus as _FastCalculusClass
     from System import Double as _Double
     from System import Func as _Func
 
-    from MathLab.CSharpEngine import FastCalculus as _FastCalculusClass
+    # isort: on
 
     FastCalculus = _FastCalculusClass
     Double = _Double
