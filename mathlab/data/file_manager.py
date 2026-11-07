@@ -6,6 +6,12 @@ from datetime import datetime
 from enum import Enum
 from typing import Dict, List, Optional
 
+from mathlab.data.project_schema import (
+    build_project,
+    read_project_file,
+    write_project_file,
+)
+
 # 进程级 MD5 缓存，key = (abspath, file_size, mtime_ns)
 # 避免同一文件未改动时重复读盘计算，减少主线程 I/O 阻塞。
 # 最多缓存 512 条，防止长期运行内存无限增长。
@@ -264,20 +270,10 @@ class FileManager:
         filename = f"{safe_name}_{timestamp}.mathlab"
         file_path = os.path.join(self.base_directory, filename)
 
-        project_data = {
-            "version": "1.0",
-            "name": name,
-            "category": category.value,
-            "created": datetime.now().isoformat(),
-            "modified": datetime.now().isoformat(),
-            "objects": {},
-            "console_history": [],
-            "settings": {},
-        }
+        project_data = build_project(name=name, category=category.value)
 
         try:
-            with open(file_path, "w", encoding="utf-8") as f:
-                json.dump(project_data, f, indent=2)
+            write_project_file(file_path, project_data)
 
             self.index.add_entry(file_path, {"category": category.value, "object_types": [], "tags": []})
 
@@ -287,8 +283,8 @@ class FileManager:
 
     def open_project(self, file_path: str) -> Dict:
         try:
-            with open(file_path, "r", encoding="utf-8") as f:
-                data = json.load(f)
+            # 统一 schema：返回值恒为 canonical v2.0 超集
+            data = read_project_file(file_path)
 
             self.index.add_entry(
                 file_path,
@@ -308,11 +304,7 @@ class FileManager:
     def save_project(self, file_path: str, data: Dict) -> Dict:
         try:
             data["modified"] = datetime.now().isoformat()
-
-            tmp_path = file_path + ".tmp"
-            with open(tmp_path, "w", encoding="utf-8") as f:
-                json.dump(data, f, indent=2)
-            os.replace(tmp_path, file_path)
+            write_project_file(file_path, data)
 
             self.index.add_entry(
                 file_path,

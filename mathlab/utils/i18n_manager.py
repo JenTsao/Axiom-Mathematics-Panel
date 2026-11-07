@@ -97,11 +97,11 @@ class I18nManager:
     def _save_language_to_config(self, lang_code: str):
         """将语言设置保存到配置文件，确保重启后生效。"""
         try:
-            from mathlab.utils.config_manager import get_config, save_config
+            from mathlab.utils.config_manager import update_config
 
-            config = get_config()
-            config["language"] = lang_code
-            save_config(config)
+            # 只提交自己关心的键；旧写法 get_config() + save_config() 会把
+            # 整份缓存覆盖回磁盘，抹掉 theme / accent 等其它模块的设置。
+            update_config({"language": lang_code})
             print(f"[I18n] Language saved to config: {lang_code}")
         except Exception as e:
             print(f"[I18n] Failed to save language to config: {e}")

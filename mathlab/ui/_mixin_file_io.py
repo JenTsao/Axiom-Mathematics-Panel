@@ -46,29 +46,23 @@ class FileIOMixin:
         if not file_path:
             return
         try:
-            import json
+            from mathlab.data.project_schema import engine_payload, read_project_file
 
-            with open(file_path, "r", encoding="utf-8") as f:
-                data = json.load(f)
+            # 统一 schema：兼容 UI / ProjectManager / FileManager 三种历史格式，
+            # 且始终能还原几何引擎的命名计数器。
+            data = read_project_file(file_path)
 
             self.on_new_project()
 
             if hasattr(self, "geometry_engine"):
-                if "name_counter" in data:
-                    self.geometry_engine.deserialize_all(data)
-                else:
-                    legacy_data = {
-                        "name_counter": 1,
-                        "objects": data.get("objects", {}),
-                    }
-                    self.geometry_engine.deserialize_all(legacy_data)
+                self.geometry_engine.deserialize_all(engine_payload(data))
 
                 self._objects_data = {obj.id: obj.serialize() for obj in self.geometry_engine.get_all_objects()}
                 for obj in self.geometry_engine.get_all_objects():
                     self.algebra_panel.add_object(obj.serialize())
                     self.central_widget.draw_object(obj.id, obj.serialize())
             else:
-                for obj_id, obj_data in data.get("objects", {}).items():
+                for obj_id, obj_data in data["objects"].items():
                     self._add_object(obj_data)
 
             self.current_project = file_path
@@ -100,14 +94,17 @@ class FileIOMixin:
 
     def _save_project(self, file_path: str) -> None:
         try:
-            import json
+            from mathlab.data.project_schema import build_project, write_project_file
 
             if hasattr(self, "geometry_engine"):
-                data = self.geometry_engine.serialize_all()
+                raw = self.geometry_engine.serialize_all()
+                data = build_project(
+                    objects=raw.get("objects", {}),
+                    settings={"name_counter": raw.get("name_counter", {})},
+                )
             else:
-                data = {"objects": self._objects_data}
-            with open(file_path, "w", encoding="utf-8") as f:
-                json.dump(data, f, indent=2, ensure_ascii=False)
+                data = build_project(objects=self._objects_data)
+            write_project_file(file_path, data)
             self.current_project = file_path
             self.statusBar().showMessage(t("status_bar.saved", file_path))
         except Exception as e:

@@ -166,8 +166,11 @@ def install_error_handler():
 class AutoSaver(QObject):
     # 自动保存文件最大大小（10MB），超过则清理
     _MAX_AUTOSAVE_SIZE = 10 * 1024 * 1024
+    # 配置 autosave_interval 单位是分钟；下限防止 0 / 负值让 QTimer 忙循环
+    _MIN_INTERVAL_MS = 10_000
+    _DEFAULT_INTERVAL_MS = 5 * 60_000
 
-    def __init__(self, main_window, interval_ms=30000):
+    def __init__(self, main_window, interval_ms=None):
         super().__init__(main_window)
         self.main_window = main_window
 
@@ -180,13 +183,51 @@ class AutoSaver(QObject):
         os.makedirs(autosave_dir, exist_ok=True)
         self.autosave_file = os.path.join(autosave_dir, "mathlab_autosave.json")
 
+        # 间隔真源为 config_manager.autosave_interval（分钟），不再硬编码 30 秒；
+        # 显式传入 interval_ms 仅用于测试或调用方临时覆盖。
+        self._interval_ms = self.resolve_interval_ms(interval_ms)
         self.timer = QTimer(self)
         self.timer.timeout.connect(self._perform_autosave)
-        self.timer.start(interval_ms)
+        self.timer.start(self._interval_ms)
+
+    @staticmethod
+    def resolve_interval_ms(interval_ms=None):
+        """解析自动保存间隔：显式毫秒优先，否则读取配置中的分钟数。
+
+        静态方法便于在无 QApplication 的环境下测试配置换算与下限钳制。
+        """
+        if interval_ms is not None:
+            try:
+                return max(AutoSaver._MIN_INTERVAL_MS, int(interval_ms))
+            except (TypeError, ValueError):
+                logger.warning("Invalid autosave interval: %s", interval_ms)
+
+        from mathlab.utils.config_manager import get_config
+
+        minutes = get_config("autosave_interval", 5)
+        try:
+            return max(AutoSaver._MIN_INTERVAL_MS, int(float(minutes) * 60_000))
+        except (TypeError, ValueError):
+            logger.warning("Invalid autosave_interval config: %s", minutes)
+            return AutoSaver._DEFAULT_INTERVAL_MS
+
+    def reload_interval(self):
+        """按当前配置重设定时器间隔，返回生效的毫秒数。"""
+        self._sync_interval()
+        return self._interval_ms
+
+    def _sync_interval(self):
+        """配置变更后在下一个保存周期自动同步，无需跨层信号接线。"""
+        new_ms = self.resolve_interval_ms()
+        if new_ms != self._interval_ms:
+            self._interval_ms = new_ms
+            self.timer.start(new_ms)
 
     def _perform_autosave(self):
         """静默执行状态快照"""
         try:
+            self._sync_interval()
+
             # 检查文件大小，如果超过限制则先清理
             if os.path.exists(self.autosave_file):
                 file_size = os.path.getsize(self.autosave_file)

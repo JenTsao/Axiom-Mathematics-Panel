@@ -10,8 +10,8 @@
 | 类型 | PySide6 (Qt for Python) 跨平台桌面应用 |
 | Python | 3.10 – 3.12（CI 矩阵）；`mypy.ini` 固定 `python_version = 3.11` |
 | 许可证 | CASAL v1.0（`LICENSE` 正文标题即 v1.0，2026-07-21；源可用，禁止 AI/ML 训练；见 §8） |
-| 规模 | `mathlab/` 170 个 `.py` / 约 4.30 万行（不含 `resources/`）；其中 `ui/` 42 个模块 / 1.38 万行、`core/` 59 个 / 1.53 万行 |
-| 测试 | 701 条用例（32 个 `test_*.py`）；日常快速回归跑 694 条（排除 `slow` / `e2e`） |
+| 规模 | `mathlab/` 172 个 `.py` / 约 4.36 万行（不含 `resources/`）；其中 `ui/` 42 个模块 / 1.38 万行、`core/` 59 个 / 1.53 万行、`data/` 4 个 |
+| 测试 | 727 条用例（33 个 `test_*.py`）；日常快速回归跑 720 条（排除 `slow` / `e2e`），其中 26 条为本轮新增的 P0 回归（T-11~T-13） |
 
 一句话定位：**在同一窗口内融合几何 DAG 引擎、符号/数值计算、内嵌 JupyterLab、AI 多智能体与插件生态的交互式数学工作台。**
 
@@ -49,13 +49,13 @@ Axiom Mathematics Panel/
 │   ├── ui/           (42)          # 界面层：窗口、面板、画布、样式
 │   ├── core/         (59)          # 核心层：几何 DAG / CAS / AI / 沙箱 / 插件 / Jupyter
 │   ├── utils/        (10)          # 工具层：logger / config / i18n / theme / theme_tokens / latex / markdown / version
-│   ├── data/         (3)           # 数据层：project.py、file_manager.py
+│   ├── data/         (4)           # 数据层：project.py、file_manager.py、project_schema.py（.mathlab 唯一 schema）
 │   ├── plugins/      (5 内置)      # 每个插件 = 一个含 main.py 的目录
 │   ├── config/                     # prompts.yaml（生效，core/prompt_manager.py 读取）
 │   ├── locale/                     # zh.json / en.json（i18n 唯一数据源）
 │   ├── resources/                  # HTML / 图标 / monaco / web_src（前端产物）
 │   ├── docs/         (10 篇)       # api.md、user_guide.md、function_explorer_guide.md …
-│   ├── tests/                      # unit(27) / integration(2) / e2e(1) + 顶层 2
+│   ├── tests/                      # unit(28) / integration(2) / e2e(1) + 顶层 2
 │   ├── scripts/                    # check_i18n.py / check_ui_style.py（CI 守卫）/ update_i18n.py
 │   ├── settings.json               # 运行时配置（含 ai_api_key 字段，见 §8）
 │   ├── build_spec.spec             # PyInstaller 完整版（含 JupyterLab 资源）
@@ -253,11 +253,34 @@ def _init_engines(self):
 
 每个插件获得**独立**的 `MathLabAPI` 实例以隔离注册项；插件禁止直接 `import mathlab.ui.main_window`。
 
-### 4.6 配置与设置
+### 4.6 配置与设置（唯一写入口）
 
-* `mathlab/utils/config_manager.py`：`get_config(key, default)` / `save_config(dict)` / `load_config(force_reload)`，数据文件 `mathlab/settings.json`（线程安全 + 缓存 + 深度合并默认值）。
-* `mathlab/utils/theme_manager.py`：`load_settings()` / `save_settings()` 直接读写**同一个** `settings.json`。
-* 新增配置项必须同时在 `config_manager._DEFAULT_CONFIG` 中给出默认值。
+* `mathlab/utils/config_manager.py` 是 `mathlab/settings.json` 的**唯一读写出口**：
+  `get_config(key, default)` / `load_config(force_reload)` / `set_config(key, value)`（仅改运行时缓存）/
+  **`update_config(patch)`**（唯一持久化入口：读盘 → 深度合并 → `tmp + os.replace` 原子写 → 刷新缓存）。
+  `save_config(dict)` 保留为兼容入口，语义已改为委托 `update_config()` 的合并写入，不再整文件覆盖。
+* **禁止**任何模块再直接 `open(settings.json, "w")` 写整份字典。历史上 `theme_manager`、
+  `i18n_manager`、`preferences_dialog` 各自持缓存 / 直写，导致 `theme` / `language` /
+  `accent` / `enable_undo` 互相被抹掉（P0，已修）。
+* `theme_manager.load_settings()` / `save_settings()` 现分别是 `get_config()` / `update_config()` 的薄包装；
+  `i18n_manager` 保存语言、`preferences_dialog` 应用偏好也统一走 `update_config()`。
+* `get_config()` 一律返回深拷贝；`_config_lock` 为 `RLock`（冷缓存下 `set_config` 曾自死锁）。
+  `set_config()` 只是进程内临时覆写，**下一次持久化会按磁盘重建缓存**，需要落盘请用 `update_config()`。
+* 新增配置项必须同时在 `config_manager._DEFAULT_CONFIG` 中给出默认值（现有 `theme`、`autosave_interval` 亦在其中）。
+
+### 4.7 工程文件（`.mathlab`）唯一 schema
+
+* `mathlab/data/project_schema.py` 是 `.mathlab` 格式的**唯一真源**（canonical v2.0）：
+  `build_project()` / `normalize_project()` / `engine_payload()` /
+  `read_project_file()` / `write_project_file()`（原子写）。
+* 写入方（`ui/_mixin_file_io.py`、`data/project.py`、`data/file_manager.py`）与读取方
+  一律经此模块；`AutoSaver` 写的是 `ProjectManager.serialize_current_state()`，同样已是 canonical。
+  `normalize_project()` 兼容三种历史格式且幂等，旧工程文件仍可打开。
+* 几何引擎命名计数器 `name_counter` 统一收进 `settings`，由 `engine_payload()` 还原给
+  `GeometryEngine.deserialize_all()`；**不要**再手写 `if "name_counter" in data` 这类分支。
+* 自动保存间隔真源为 `config_manager.autosave_interval`（**分钟**），由
+  `core/error_manager.py::AutoSaver.resolve_interval_ms()` 换算并钳制下限（10 秒）；
+  偏好保存后调 `reload_interval()` 即时生效，每个周期 `_sync_interval()` 兜底。
 
 ---
 
@@ -448,6 +471,9 @@ QTimer.singleShot(0, self._deferred_init)   # AI 集成 / ECharts 绑定 / REPL 
 | T-8 | `README.md` | ✅ 已修：Mixin 数、`python -m mathlab`、工程文件扩展名（`.mathlab` 而非 `.mlproj`）、许可证版本、以及“WebSocket 协作 / 云端同步 / 资源库 / 10 家模型接入”等未实现项均已按事实改写，README 顶部新增「📌 当前状态」表区分“可用 / 代码就绪未接线 / 不存在” | 文档继续按源码事实校验后再写 |
 | T-10 | `mathlab/core/ai_manager.py`（原 1664 行） | ✅ 已拆：`AIEngineWorker` + Qt/openai 兼容层 → `ai_engine_worker.py`；`PlannerAgent` → `planner_agent.py`；两个 `solve_problem`（cx 59 / cx 36）策略化拆成若干 cx≤11 的环节。拆分后 `ai_manager.py` 最高 cx=19（`ask`），全仓已无 cx>40 的函数。旧导入路径全部保留（re-export + PEP 562 `__getattr__`），契约见 `mathlab/docs/ai_manager_split.md` | 后续可继续拆出 `AIManager` 的 ML 统计方法（`fit_*` / `cluster_*` / `recognize_digit`）与 `ReasoningCache`——二者与 AI 调度无耦合，是这个文件剩下的最大两块 |
 | T-9 | `mathlab/core/cs_*.py` 全家 | ✅ 已全部修复：`cs_calculus` / `cs_complex` / `cs_mesh` / `cs_fft` 原为裸 `import clr` + 模块尾实例化，缺 pythonnet/.NET 时导入期抛异常，分别击穿 `cas_provider`（CAS 层）、分形面板、3D 插件、信号面板（且 `signal_lab_panel` 的 except 只捕 `ImportError`，漏放 `RuntimeError`）。已统一为 try 包裹加载 + `get_cs_*()` 惰性单例 + `CS_*_AVAILABLE` 标志（模板照抄 `cs_num_engine.py`），调用方按标志降级：`cas_provider` 积分降级 SciPy quad，UI 工作线程抛 `RuntimeError` 由 `TaskManager` 记录，同步路径提前返回 | 新增 `cs_*` 模块直接复制该模板；严禁模块级实例化引擎 |
+| T-11 | 配置双写 / 冷缓存死锁 | ✅ 已修（P0）：`_config_lock` 改 `RLock` 消除 `set_config()` 冷缓存自死锁；新增 `update_config()` 作为 `settings.json` 唯一写入口（读盘→深合并→原子写→刷缓存）；`theme_manager` / `i18n_manager` / `preferences_dialog` 三处直写全部收口，整字典覆盖丢 `theme`/`language` 的问题消失；`get_config()` 改返回深拷贝，`_deep_merge` 不再共享嵌套 dict | 新写入方一律调 `update_config(patch)`；**禁止**再直接 `open(settings.json, "w")` |
+| T-12 | `.mathlab` 三套 schema | ✅ 已修（P0）：新增 `data/project_schema.py`（canonical v2.0），`_mixin_file_io` / `project.py` / `file_manager.py` 三个写入方与全部读取方统一；`normalize_project()` 兼容三种历史格式且幂等，旧文件可继续打开，`name_counter` 不再丢失 | 新增工程文件字段先改 `build_project()` / `normalize_project()`，不要在各写入方各加一份 |
+| T-13 | `autosave_interval` 死配置 | ✅ 已修（P0）：默认值进 `_DEFAULT_CONFIG`，`AutoSaver.resolve_interval_ms()` 把分钟换算成毫秒并钳制 10 秒下限，偏好保存后 `reload_interval()` 即时生效、每周期 `_sync_interval()` 兜底；30 秒硬编码已删 | 调整间隔单位时同步改 `preferences_dialog.autosave_spin` 与 `resolve_interval_ms()` |
 
 ---
 
@@ -464,7 +490,9 @@ QTimer.singleShot(0, self._deferred_init)   # AI 集成 / ECharts 绑定 / REPL 
 | 加引擎 / 改引擎 | `main_window.py::_init_engines()`、`mathlab/core/` |
 | 写插件 | `mathlab/core/plugin_base.py`、`core/extension_api.py`、`plugins/<id>/main.py` |
 | 加文案 | `mathlab/locale/zh.json` + `en.json`（双语同步） |
-| 加配置项 | `mathlab/utils/config_manager.py::_DEFAULT_CONFIG` |
+| 加配置项 | `mathlab/utils/config_manager.py::_DEFAULT_CONFIG`；持久化一律走 `update_config()` |
+| 改工程文件格式 | `mathlab/data/project_schema.py`（canonical v2.0 + 旧格式兼容，唯一真源） |
+| 改自动保存间隔 | `mathlab/core/error_manager.py::AutoSaver.resolve_interval_ms()` + `config_manager.autosave_interval`（分钟） |
 | 改 AI 记忆 | `mathlab/core/agent_memory.py`（文件式记忆：项目级 `mathlab/data/memory/`、用户级 `~/.mathlab/memory/`，详见 `mathlab/docs/agent_memory.md`） |
 | 改 AI 流式线程 | `mathlab/core/ai_engine_worker.py` —— Qt/openai 兼容层的**唯一真源** + `AIEngineWorker` |
 | 改教研组长 | `mathlab/core/planner_agent.py` —— `PlannerAgent` + `StepResultCollector`（拆分契约见 `mathlab/docs/ai_manager_split.md`） |

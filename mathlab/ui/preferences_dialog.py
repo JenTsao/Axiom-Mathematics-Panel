@@ -58,6 +58,7 @@ from mathlab.utils.i18n_manager import SUPPORTED_LANGUAGES, get_i18n, t
 from mathlab.utils.theme_manager import (
     THEMES,
     get_current_theme,
+    load_settings,
     save_settings,
     set_theme,
 )
@@ -93,7 +94,9 @@ class PreferencesDialog(QDialog):
         self.setMinimumSize(700, 500)
         self.resize(800, 560)
 
-        self.settings: dict = initial_settings or self._default_settings()
+        # 载入磁盘上已保存的偏好，避免对话框一打开就把用户设置显示成默认值，
+        # 并在应用时把无关配置整份覆盖掉（P0）。
+        self.settings: dict = {**self._default_settings(), **(initial_settings or load_settings())}
 
         self._build_ui()
         self._load_settings()
@@ -733,7 +736,6 @@ class PreferencesDialog(QDialog):
                 "enable_undo": adv["enable_undo"],
             }
         )
-        save_settings({"enable_undo": enable_undo})
         self.undo_enabled_changed.emit(enable_undo)
         self.advanced_settings_changed.emit(adv)
 
@@ -752,21 +754,17 @@ class PreferencesDialog(QDialog):
             self.settings["ai_api_key"] = self.ai_api_key_input.text()
             self.settings["ai_model"] = self.ai_model_input.text()
 
-            import json
-            import os
+        from mathlab.utils.config_manager import update_config
 
-            settings_path = os.path.join(
-                os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                "settings.json",
-            )
-            try:
-                with open(settings_path, "w", encoding="utf-8") as f:
-                    json.dump(self.settings, f, ensure_ascii=False, indent=4)
-            except Exception:
-                pass
+        # 合并写入而非整文件覆盖，避免抹掉 theme / language / ipc 等其它模块的键
+        update_config(self.settings)
 
-            if hasattr(self.parent(), "ai_manager"):
-                self.parent().ai_manager.reload_config()
+        if hasattr(self, "ai_base_url_input") and hasattr(self.parent(), "ai_manager"):
+            self.parent().ai_manager.reload_config()
+
+        # 让新的自动保存间隔立即生效，不必等下一个旧周期
+        if hasattr(self.parent(), "autosaver"):
+            self.parent().autosaver.reload_interval()
 
         self.btn_apply.setEnabled(False)
 

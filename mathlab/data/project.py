@@ -1,6 +1,11 @@
-import json
-import os
 from datetime import datetime
+
+from mathlab.data.project_schema import (
+    PROJECT_SCHEMA_VERSION,
+    build_project,
+    read_project_file,
+    write_project_file,
+)
 
 
 class ProjectManager:
@@ -11,7 +16,7 @@ class ProjectManager:
         self.settings = {
             "created": datetime.now().isoformat(),
             "modified": datetime.now().isoformat(),
-            "version": "1.0",
+            "version": PROJECT_SCHEMA_VERSION,
         }
 
     def new_project(self):
@@ -21,18 +26,18 @@ class ProjectManager:
         self.settings = {
             "created": datetime.now().isoformat(),
             "modified": datetime.now().isoformat(),
-            "version": "1.0",
+            "version": PROJECT_SCHEMA_VERSION,
         }
 
     def open_project(self, file_path):
         try:
-            with open(file_path, "r", encoding="utf-8") as f:
-                data = json.load(f)
+            # 统一 schema：兼容 UI / ProjectManager / FileManager 三种历史格式
+            project = read_project_file(file_path)
 
             self.current_project = file_path
-            self.objects = data.get("objects", {})
-            self.console_history = data.get("console_history", [])
-            self.settings = data.get("settings", {})
+            self.objects = project["objects"]
+            self.console_history = project["console_history"]
+            self.settings = project["settings"]
 
             return {"success": True}
         except Exception as e:
@@ -57,17 +62,7 @@ class ProjectManager:
             return {"success": False, "error": "No file path specified"}
 
         try:
-            data = {
-                "objects": self.objects,
-                "console_history": self.console_history,
-                "settings": {**self.settings, "modified": datetime.now().isoformat()},
-            }
-
-            tmp_path = file_path + ".tmp"
-            with open(tmp_path, "w", encoding="utf-8") as f:
-                json.dump(data, f, indent=2)
-            os.replace(tmp_path, file_path)
-
+            write_project_file(file_path, self.serialize_current_state())
             self.current_project = file_path
 
             # 同步刷新 FileIndex，避免索引里的 modified/checksum 过期
@@ -127,11 +122,16 @@ class ProjectManager:
         self.settings["modified"] = datetime.now().isoformat()
 
     def serialize_current_state(self):
-        return {
-            "objects": self.objects,
-            "console_history": self.console_history,
-            "settings": {**self.settings, "modified": datetime.now().isoformat()},
-        }
+        """导出 canonical v2.0 工程字典（保存与自动存档共用同一形状）。"""
+        return build_project(
+            objects=self.objects,
+            console_history=self.console_history,
+            settings=self.settings,
+            name=self.settings.get("name", ""),
+            category=self.settings.get("category", "untitled"),
+            created=self.settings.get("created"),
+            modified=datetime.now().isoformat(),
+        )
 
     def export_to_png(self, canvas_widget, file_path):
         try:

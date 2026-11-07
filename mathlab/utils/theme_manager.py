@@ -13,7 +13,6 @@
 
 from __future__ import annotations
 
-import json
 import os
 from string import Template
 
@@ -68,25 +67,26 @@ THEMES: dict[str, dict] = {name: _derive_legacy_view(name) for name in THEME_TOK
 
 
 def load_settings() -> dict:
-    """读取 settings.json（与 config_manager 共用同一文件）。"""
-    if os.path.exists(SETTINGS_FILE):
-        try:
-            with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception as e:
-            logger.warning("Could not load settings: %s", e)
-    return {}
+    """读取 settings.json。
+
+    委托 ``config_manager.get_config()``，与语言、AI、偏好等模块共用同一份缓存，
+    避免主题侧再持有一份会与磁盘失配的快照。``SETTINGS_FILE`` 仅为兼容保留，
+    实际路径解析统一由 config_manager 负责。
+    """
+    from mathlab.utils.config_manager import get_config
+
+    return get_config()
 
 
 def save_settings(settings: dict) -> None:
-    """合并写入 settings.json。"""
-    try:
-        current = load_settings()
-        current.update(settings)
-        with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
-            json.dump(current, f, indent=4, ensure_ascii=False)
-    except Exception as e:
-        logger.warning("Could not save settings: %s", e)
+    """合并写入 settings.json（唯一权威入口 ``config_manager.update_config``）。
+
+    历史上这里直接 open(..., "w") 整文件覆盖，且 indent 与 config_manager 不同，
+    会把 language / ai_* / ipc 等其它模块写入的键一并抹掉。
+    """
+    from mathlab.utils.config_manager import update_config
+
+    update_config(settings)
 
 
 _cached_theme = None
