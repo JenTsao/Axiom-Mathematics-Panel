@@ -1,11 +1,11 @@
 import numpy as np
 
-# 扩大异常捕获范围，防止 RuntimeError 等非 ImportError 导致整个模块崩溃
+# C# 引擎导入期已自行降级（get_cs_geometry 返回 None）；此处保留兜底，
+# 防止 utils 等上游依赖异常时击穿本模块。
 try:
-    from mathlab.core.cs_geometry_engine import cs_geometry
-except Exception as e:
-    print(f"Warning: C# geometry engine fallback triggered in conic.py. Error: {e}")
-    cs_geometry = None
+    from mathlab.core.cs_geometry_engine import get_cs_geometry
+except Exception:  # pragma: no cover - 取决于本机依赖环境
+    get_cs_geometry = None
 
 from mathlab.core.models.base import GeometricObject
 
@@ -238,8 +238,9 @@ class ConicSection(GeometricObject):
     def generate_points(self, num_points=500):
         """通过 C# 极速生成离散点，回退到矢量化隐函数求解"""
         try:
-            if cs_geometry and cs_geometry.is_available:
-                pts = cs_geometry.generate_conic_points(
+            cs_engine = get_cs_geometry() if get_cs_geometry is not None else None
+            if cs_engine and cs_engine.is_available:
+                pts = cs_engine.generate_conic_points(
                     self.A,
                     self.B,
                     self.C,

@@ -3,12 +3,12 @@ from collections import deque
 import numpy as np
 from sympy import latex
 
-# 扩大异常捕获范围，防止 RuntimeError 等非 ImportError 导致整个模块崩溃
+# C# 引擎导入期已自行降级（get_cs_geometry 返回 None）；此处保留兜底，
+# 防止 utils 等上游依赖异常时击穿本模块。
 try:
-    from mathlab.core.cs_geometry_engine import cs_geometry
-except Exception as e:
-    print(f"Warning: C# geometry engine fallback triggered in locus.py. Error: {e}")
-    cs_geometry = None
+    from mathlab.core.cs_geometry_engine import get_cs_geometry
+except Exception:  # pragma: no cover - 取决于本机依赖环境
+    get_cs_geometry = None
 
 from mathlab.core.models.base import GeometricObject
 
@@ -174,8 +174,9 @@ class Intersection(GeometricObject):
         if abs(det) < 1e-10:
             return []
 
-        if cs_geometry and cs_geometry.is_available:
-            pts = cs_geometry.solve_line_line(a1, b1, c1, a2, b2, c2)
+        cs_engine = get_cs_geometry() if get_cs_geometry is not None else None
+        if cs_engine and cs_engine.is_available:
+            pts = cs_engine.solve_line_line(a1, b1, c1, a2, b2, c2)
             if pts is not None:
                 return pts
 
@@ -201,8 +202,9 @@ class Intersection(GeometricObject):
         if n2 < 1e-10:
             return []
 
-        if cs_geometry and cs_geometry.is_available:
-            pts = cs_geometry.solve_line_circle(a, b, c, cx, cy, r)
+        cs_engine = get_cs_geometry() if get_cs_geometry is not None else None
+        if cs_engine and cs_engine.is_available:
+            pts = cs_engine.solve_line_circle(a, b, c, cx, cy, r)
             if pts is not None:
                 return pts
 
@@ -245,8 +247,9 @@ class Intersection(GeometricObject):
         if abs(d) < 1e-10 and abs(r1 - r2) < 1e-10:
             return []
 
-        if cs_geometry and cs_geometry.is_available:
-            pts = cs_geometry.solve_circle_circle(cx1, cy1, r1, cx2, cy2, r2)
+        cs_engine = get_cs_geometry() if get_cs_geometry is not None else None
+        if cs_engine and cs_engine.is_available:
+            pts = cs_engine.solve_circle_circle(cx1, cy1, r1, cx2, cy2, r2)
             if pts is not None:
                 return pts
 

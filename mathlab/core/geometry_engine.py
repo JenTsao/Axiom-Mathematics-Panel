@@ -45,14 +45,6 @@ from mathlab.core.models import (
     Sphere,
 )
 
-# 扩大异常捕获范围，防止 RuntimeError 等非 ImportError 导致整个模块崩溃
-try:
-    from mathlab.core.cs_geometry_engine import cs_geometry
-except Exception as e:
-    print(f"Warning: C# geometry engine fallback triggered in geometry_engine.py. Error: {e}")
-    cs_geometry = None
-
-
 # 约束表达式中允许使用的数学函数/常量
 _CONSTRAINT_LOCAL_FUNCS = {
     "Eq": Eq,

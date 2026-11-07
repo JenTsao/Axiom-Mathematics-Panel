@@ -10,8 +10,8 @@
 | 类型 | PySide6 (Qt for Python) 跨平台桌面应用 |
 | Python | 3.10 – 3.12（CI 矩阵）；`mypy.ini` 固定 `python_version = 3.11` |
 | 许可证 | CASAL v1.0（`LICENSE` 正文标题即 v1.0，2026-07-21；源可用，禁止 AI/ML 训练；见 §8） |
-| 规模 | `mathlab/` 172 个 `.py` / 约 4.36 万行（不含 `resources/`）；其中 `ui/` 42 个模块 / 1.38 万行、`core/` 59 个 / 1.53 万行、`data/` 4 个 |
-| 测试 | 727 条用例（33 个 `test_*.py`）；日常快速回归跑 720 条（排除 `slow` / `e2e`），其中 26 条为本轮新增的 P0 回归（T-11~T-13） |
+| 规模 | `mathlab/` 173 个 `.py` / 约 4.39 万行（不含 `resources/`）；其中 `ui/` 42 个模块 / 1.38 万行、`core/` 59 个 / 1.53 万行、`data/` 4 个 |
+| 测试 | 748 条用例（34 个 `test_*.py`）；日常快速回归跑 741 条（排除 `slow` / `e2e`），其中 26 条为 P0 回归（T-11~T-13）、21 条为 P1 加固回归（T-14~T-17） |
 
 一句话定位：**在同一窗口内融合几何 DAG 引擎、符号/数值计算、内嵌 JupyterLab、AI 多智能体与插件生态的交互式数学工作台。**
 
@@ -37,6 +37,10 @@
 
 > `networkx` / `psutil` 为运行必需，三份清单（根 `requirements.txt`、`mathlab/requirements.txt`、`setup.py`）
 > 必须保持同步；根清单此前缺这两项（§10 T-1，已修复）。
+> P1 已把三份清单的**运行依赖集合与版本下界完全对齐**（PySide6 统一 `>=6.6.0`，
+> 根清单补齐 17 项下界，`setup.py install_requires` 补齐至 20 项），
+> 由 `mathlab/tests/unit/test_p1_hardening.py::TestDependencyParity` 自动守护；
+> 改任一清单必须同步另外两份。
 
 ---
 
@@ -55,7 +59,7 @@ Axiom Mathematics Panel/
 │   ├── locale/                     # zh.json / en.json（i18n 唯一数据源）
 │   ├── resources/                  # HTML / 图标 / monaco / web_src（前端产物）
 │   ├── docs/         (10 篇)       # api.md、user_guide.md、function_explorer_guide.md …
-│   ├── tests/                      # unit(28) / integration(2) / e2e(1) + 顶层 2
+│   ├── tests/                      # unit(29) / integration(2) / e2e(1) + 顶层 2
 │   ├── scripts/                    # check_i18n.py / check_ui_style.py（CI 守卫）/ update_i18n.py
 │   ├── settings.json               # 运行时配置（含 ai_api_key 字段，见 §8）
 │   ├── build_spec.spec             # PyInstaller 完整版（含 JupyterLab 资源）
@@ -233,11 +237,20 @@ def _init_engines(self):
 禁止在面板 / Mixin / 插件中 `GeometryEngine()`、`CASProvider()` 二次实例化（历史上出现过“双重初始化”反模式）。
 需要引用时通过 `self.<engine>` 或 `MathLabAPI`。
 
-### 4.4 信号
+### 4.4 信号（按源码事实，非历史设计意图）
 
-* 跨模块事件信号集中在 **`mathlab/core/signals.py`**：`GeometrySignals`、`ConsoleSignals`、`AlgorithmSignals`、`AISignals`（均继承 `QObject`）。
-* 面板内部私有信号可在自己的 `QObject` 子类中定义，但必须注释说明为何不进 `signals.py`。
-* 接线统一在 `SignalsMixin.connect_signals()`，禁止在 `__init__` 里散落 `connect`。
+* **唯一活跃总线**：`core/signals.py::ThemeSignals` / 单例 `theme_signals`
+  （`theme_manager.set_theme()` 发射 → `ui/canvas.py` 订阅）。
+* `signals.py` 里另外 4 个类（`GeometrySignals` / `ConsoleSignals` / `AlgorithmSignals` /
+  `AISignals`）全仓 **0 处 emit / connect**，仅为兼容 `mathlab.core.__init__` 的
+  re-export 而保留，已标 DEPRECATED。新代码不要使用，也不要把新信号"集中"到这里。
+* 真实跨模块信号是**分散定义**的：`geometry_engine.py` 内置 4 个信号、
+  `ai_engine_worker.py`、`async_workers.py`、`agent_bridge.py`、`undo_stack.py`、
+  `octave_bridge.py`（`plot_requested`）。
+* 接线也**不集中**：全 `ui/` 实测 244 处 `.connect(` / 32 文件，
+  `SignalsMixin.connect_signals()` 只占 27 处，`main_window.py:93,138` 就在 `__init__` 内。
+  ❌ 不要再声称"接线统一在 SignalsMixin / 禁止在 `__init__` 里 connect"——该约定与源码不符。
+* 面板内部私有信号可自定义，但必须注释说明用途。
 
 ### 4.5 插件系统
 
@@ -470,10 +483,14 @@ QTimer.singleShot(0, self._deferred_init)   # AI 集成 / ECharts 绑定 / REPL 
 | T-7 | `mathlab/scripts/update_i18n.py` | 内部硬编码 `j:/PROJECT/...` 绝对路径 | 不要直接运行；改为手动编辑 JSON 或先修复脚本路径 |
 | T-8 | `README.md` | ✅ 已修：Mixin 数、`python -m mathlab`、工程文件扩展名（`.mathlab` 而非 `.mlproj`）、许可证版本、以及“WebSocket 协作 / 云端同步 / 资源库 / 10 家模型接入”等未实现项均已按事实改写，README 顶部新增「📌 当前状态」表区分“可用 / 代码就绪未接线 / 不存在” | 文档继续按源码事实校验后再写 |
 | T-10 | `mathlab/core/ai_manager.py`（原 1664 行） | ✅ 已拆：`AIEngineWorker` + Qt/openai 兼容层 → `ai_engine_worker.py`；`PlannerAgent` → `planner_agent.py`；两个 `solve_problem`（cx 59 / cx 36）策略化拆成若干 cx≤11 的环节。拆分后 `ai_manager.py` 最高 cx=19（`ask`），全仓已无 cx>40 的函数。旧导入路径全部保留（re-export + PEP 562 `__getattr__`），契约见 `mathlab/docs/ai_manager_split.md` | 后续可继续拆出 `AIManager` 的 ML 统计方法（`fit_*` / `cluster_*` / `recognize_digit`）与 `ReasoningCache`——二者与 AI 调度无耦合，是这个文件剩下的最大两块 |
-| T-9 | `mathlab/core/cs_*.py` 全家 | ✅ 已全部修复：`cs_calculus` / `cs_complex` / `cs_mesh` / `cs_fft` 原为裸 `import clr` + 模块尾实例化，缺 pythonnet/.NET 时导入期抛异常，分别击穿 `cas_provider`（CAS 层）、分形面板、3D 插件、信号面板（且 `signal_lab_panel` 的 except 只捕 `ImportError`，漏放 `RuntimeError`）。已统一为 try 包裹加载 + `get_cs_*()` 惰性单例 + `CS_*_AVAILABLE` 标志（模板照抄 `cs_num_engine.py`），调用方按标志降级：`cas_provider` 积分降级 SciPy quad，UI 工作线程抛 `RuntimeError` 由 `TaskManager` 记录，同步路径提前返回 | 新增 `cs_*` 模块直接复制该模板；严禁模块级实例化引擎 |
+| T-9 | `mathlab/core/cs_*.py` 全家 | ✅ 已修复（P1 补齐 `cs_geometry_engine` 漏网项）：`cs_calculus` / `cs_complex` / `cs_mesh` / `cs_fft` 原为裸 `import clr` + 模块尾实例化，缺 pythonnet/.NET 时导入期抛异常，分别击穿 `cas_provider`（CAS 层）、分形面板、3D 插件、信号面板（且 `signal_lab_panel` 的 except 只捕 `ImportError`，漏放 `RuntimeError`）。已统一为 try 包裹加载 + `get_cs_*()` 惰性单例 + `CS_*_AVAILABLE` 标志（模板照抄 `cs_num_engine.py`），调用方按标志降级：`cas_provider` 积分降级 SciPy quad，UI 工作线程抛 `RuntimeError` 由 `TaskManager` 记录，同步路径提前返回 | 新增 `cs_*` 模块直接复制该模板；严禁模块级实例化引擎 |
 | T-11 | 配置双写 / 冷缓存死锁 | ✅ 已修（P0）：`_config_lock` 改 `RLock` 消除 `set_config()` 冷缓存自死锁；新增 `update_config()` 作为 `settings.json` 唯一写入口（读盘→深合并→原子写→刷缓存）；`theme_manager` / `i18n_manager` / `preferences_dialog` 三处直写全部收口，整字典覆盖丢 `theme`/`language` 的问题消失；`get_config()` 改返回深拷贝，`_deep_merge` 不再共享嵌套 dict | 新写入方一律调 `update_config(patch)`；**禁止**再直接 `open(settings.json, "w")` |
 | T-12 | `.mathlab` 三套 schema | ✅ 已修（P0）：新增 `data/project_schema.py`（canonical v2.0），`_mixin_file_io` / `project.py` / `file_manager.py` 三个写入方与全部读取方统一；`normalize_project()` 兼容三种历史格式且幂等，旧文件可继续打开，`name_counter` 不再丢失 | 新增工程文件字段先改 `build_project()` / `normalize_project()`，不要在各写入方各加一份 |
 | T-13 | `autosave_interval` 死配置 | ✅ 已修（P0）：默认值进 `_DEFAULT_CONFIG`，`AutoSaver.resolve_interval_ms()` 把分钟换算成毫秒并钳制 10 秒下限，偏好保存后 `reload_interval()` 即时生效、每周期 `_sync_interval()` 兜底；30 秒硬编码已删 | 调整间隔单位时同步改 `preferences_dialog.autosave_spin` 与 `resolve_interval_ms()` |
+| T-14 | `core/cs_geometry_engine.py` 模块尾实例化 | ✅ 已修（P1）：T-9 唯一漏网项。改为 try 包裹加载 + `get_cs_geometry()` 惰性单例 + `CS_GEOMETRY_AVAILABLE`；`geometry_engine.py` 的死 import 删除，`models/locus.py` / `models/conic.py` 三个调用方同步改用 getter | 新增 `cs_*` 一律照抄 `cs_calculus_engine.py` 模板；严禁模块级实例化 |
+| T-15 | 双异常钩子静默覆盖 | ✅ 已修（P1）：`main.py:118 setup_logger()` 装的 hook 被 `:142 install_error_handler()` 覆盖，致命异常不落 `mathlab.log`。现在保存前一个 hook 并链式调用（幂等、防自递归），`KeyboardInterrupt` 短路不弹崩溃报告 | 新增全局钩子一律链式，禁止直接赋值 `sys.excepthook` |
+| T-16 | 三份依赖清单漂移 | ✅ 已修（P1）：PySide6 下界统一 `>=6.6.0`；根清单补齐 17 项版本下界；`setup.py install_requires` 从 7 项补齐到 20 项运行依赖（此前 `pip install mathlab` 装出的包跑不起来，而 CI 按根清单安装 → 本地/CI 判定分叉） | `TestDependencyParity` 会拦不一致；改一份必须同步三份 |
+| T-17 | Qt 绑定串线 / 沙箱双扫描漂移 / 信号文档失真 | ✅ 已收敛（P1）：`ai_engine_worker.py` 改为优先 PySide6、PyQt5 仅 fallback（同装两者时不再跨绑定失配）；`sandbox_script.py::visit_Call` 补齐与父进程一致的显式 `type()` 拦截，新增 `test_p1_hardening.py` 锁定 5 组规则集合相等 + 11 段代码两侧判定一致；`signals.py` 4 个无订阅者类标 DEPRECATED，§4.4 按源码事实重写（原声称"信号集中定义 / 接线统一在 SignalsMixin"与实测 244 处 connect 矛盾） | **放宽任一侧沙箱白名单都属违规**（§8）；改规则必须父子同步并补 parity 用例 |
 
 ---
 
@@ -485,7 +502,7 @@ QTimer.singleShot(0, self._deferred_init)   # AI 集成 / ECharts 绑定 / REPL 
 | 改全局样式 | `mathlab/ui/styles.qss` + `theme_manager.set_theme()` |
 | 加面板 / Dock | `mathlab/ui/_mixin_ui_setup.py`（`setup_docks`、`add_dynamic_panel`） |
 | 加菜单 / 工具栏 | `mathlab/ui/_mixin_menus.py` |
-| 接线信号 | `mathlab/ui/_mixin_signals.py`、`mathlab/core/signals.py` |
+| 接线信号 | `mathlab/ui/_mixin_signals.py`（仅 27/244 处）、各模块内置信号；`core/signals.py` 仅 `theme_signals` 活跃，见 §4.4 |
 | 加命令 | `mathlab/ui/_mixin_commands.py`、`mathlab/core/command_manager.py` |
 | 加引擎 / 改引擎 | `main_window.py::_init_engines()`、`mathlab/core/` |
 | 写插件 | `mathlab/core/plugin_base.py`、`core/extension_api.py`、`plugins/<id>/main.py` |

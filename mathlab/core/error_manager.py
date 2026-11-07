@@ -140,9 +140,27 @@ class CrashReportDialog(QDialog):
         self.copy_btn.setText("已复制！")
 
 
+# setup_logger() 先安装的 excepthook；此处链式保留，避免后者静默覆盖导致
+# 致命异常不落 mathlab.log（历史上 main.py:118 → :142 正是这个顺序）。
+_previous_excepthook = None
+
+
 def global_exception_handler(exc_type, exc_value, exc_tb):
-    """全局未捕获异常处理钩子"""
-    # 1. 永远先写入磁盘日志
+    """全局未捕获异常处理钩子：先委托原钩子写日志，再展示崩溃报告。"""
+    if issubclass(exc_type, KeyboardInterrupt):
+        # 链式钩子已按原行为输出（Ctrl+C 正常退出），不再弹崩溃报告
+        previous = _previous_excepthook or sys.__excepthook__
+        previous(exc_type, exc_value, exc_tb)
+        return
+
+    previous = _previous_excepthook or sys.__excepthook__
+    try:
+        previous(exc_type, exc_value, exc_tb)
+    except Exception:
+        logger.critical("原异常钩子执行失败", exc_info=True)
+        sys.__excepthook__(exc_type, exc_value, exc_tb)
+
+    # 1. 保留本模块自己的致命异常记录（完整堆栈）
     logger.critical("Uncaught exception", exc_info=(exc_type, exc_value, exc_tb))
 
     # 2. 判断是否存在 Qt 实例且在主线程
@@ -159,7 +177,11 @@ def global_exception_handler(exc_type, exc_value, exc_tb):
 
 
 def install_error_handler():
-    """在 main.py 启动时调用此函数"""
+    """在 main.py 启动时调用；链式保留 setup_logger() 已安装的日志钩子。"""
+    global _previous_excepthook
+    if sys.excepthook is global_exception_handler:
+        return  # 幂等：避免重复安装把自身记成前一个钩子，形成递归
+    _previous_excepthook = sys.excepthook
     sys.excepthook = global_exception_handler
 
 

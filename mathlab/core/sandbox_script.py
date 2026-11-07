@@ -199,6 +199,11 @@ def _scan_code_safety(code_string):
             if isinstance(node.func, ast.Name):
                 if node.func.id in BANNED_FUNCTIONS_AST:
                     errors.append(f"安全拦截: 禁止调用高危函数 '{node.func.id}()'")
+                # 与 sandbox_security.CodeSecurityScanner.visit_Call 逐行对齐：
+                # type() 能拿到类对象并沿 __mro__ 逃逸。虽然 DANGEROUS_REFERENCES_AST
+                # 已在 visit_Name 拦下该名字，这里仍显式拒绝，避免两侧规则漂移。
+                if node.func.id == "type":
+                    errors.append("安全拦截: 禁止调用 'type()' 函数")
             elif isinstance(node.func, ast.Attribute):
                 attr_name = node.func.attr
                 if attr_name in BANNED_FUNCTIONS_AST or attr_name.startswith("__"):

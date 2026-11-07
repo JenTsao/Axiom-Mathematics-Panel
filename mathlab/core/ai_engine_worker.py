@@ -19,14 +19,16 @@ from mathlab.utils.logger import get_logger
 logger = get_logger(__name__)
 
 # --- Qt / OpenAI 兼容层（全仓唯一一处，别处请从本模块 import） ----------------
+# 项目 GUI 绑定是 PySide6，必须优先加载：若同机装有 PyQt5 而本模块先选了它，
+# QObject / Signal 会与 UI 层的 PySide6 信号跨绑定失配（connect 静默失效）。
 try:
-    from PyQt5.QtCore import QObject, QThread
-    from PyQt5.QtCore import pyqtSignal as Signal
+    from PySide6.QtCore import QObject, QThread, Signal
 
     QT_AVAILABLE = True
 except ImportError:
     try:
-        from PySide6.QtCore import QObject, QThread, Signal
+        from PyQt5.QtCore import QObject, QThread
+        from PyQt5.QtCore import pyqtSignal as Signal
 
         QT_AVAILABLE = True
     except ImportError:

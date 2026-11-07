@@ -18,14 +18,30 @@ setup(
     description="Interactive Mathematics and AI Teaching Software",
     author="MathLab Team",
     packages=find_packages(),
-    # ── 核心依赖（运行必须） ──────────────────────────────────────────
+    # ── 运行依赖（与根 requirements.txt / mathlab/requirements.txt 同一套下界）──
+    # 此前这里只列 7 项，把 Jupyter / openai / matplotlib / pythonnet 全放进
+    # extras，导致 `pip install mathlab` 装出的包跑不起来（CI 却按根清单安装，
+    # 本地与 CI 判定分叉）。运行必需的一律进 install_requires。
     install_requires=[
-        "PySide6>=6.5.0",
-        "sympy>=1.12",
+        "PySide6>=6.6.0",
         "numpy>=1.26",
+        "sympy>=1.12",
         "scipy>=1.11",
-        "networkx>=3.1",
+        "scikit-learn>=1.3",
+        "matplotlib>=3.8",
+        "pyqtgraph>=0.13",
+        "openai>=1.0",
+        "PyYAML>=6.0",
+        "jupyterlab>=4.0",
+        "jupyter_client>=8.0",
+        "ipykernel>=6.0",
+        "jupyter_server>=2.0",
+        "requests>=2.31",
+        "pythonnet>=3.0",
+        "markdown>=3.5",
+        "Pygments>=2.17",
         "jedi>=0.19",
+        "networkx>=3.1",
         "psutil>=5.9",
     ],
     # ── 可选功能依赖 ─────────────────────────────────────────────────

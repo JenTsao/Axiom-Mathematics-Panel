@@ -1,6 +1,18 @@
-"""Qt 信号定义模块。
+"""Qt 信号定义模块（DEPRECATED 兼容层 + 主题总线）。
 
-所有核心模块的事件信号在此集中定义，替代分散的手写监听器。
+**本模块不是全仓的集中信号总线**——这是历史设计意图，不是代码事实：
+
+* 唯一仍在使用的是 :class:`ThemeSignals` 及模块级单例 ``theme_signals``：
+  ``theme_manager.set_theme()`` 发射，``ui/canvas.py`` 订阅。
+* ``GeometrySignals`` / ``ConsoleSignals`` / ``AlgorithmSignals`` / ``AISignals``
+  全仓**没有任何 emit / connect**，仅为兼容 ``mathlab.core.__init__`` 的
+  re-export（``__all__`` + ``__getattr__`` 映射）而保留。新代码不要使用它们，
+  也不要把它们当成"新增信号应该放这里"的位置。
+* 真实跨模块信号分散定义于 ``geometry_engine.py``（内置 4 个信号）、
+  ``ai_engine_worker.py``、``async_workers.py``、``agent_bridge.py``、
+  ``undo_stack.py``、``octave_bridge.py`` 等处。
+* 接线同样不集中：全 ``ui/`` 有 200+ 处 ``.connect(``，
+  ``SignalsMixin.connect_signals()`` 只占其中一小部分。详见 AGENTS.md §4.4。
 """
 
 from PySide6.QtCore import QObject, Signal
