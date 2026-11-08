@@ -70,7 +70,7 @@ Axiom Mathematics Panel/
 ├── requirements.txt                # 根依赖清单（**CI 使用**）
 ├── pyproject.toml                  # 仅含 pytest + coverage 配置
 ├── .flake8 / .pylintrc / .bandit / mypy.ini
-├── .github/workflows/              # test.yml / code-quality.yml / release.yml / _build-setup.yml
+├── .github/workflows/              # test / code-quality / release / build-smoke / dependency-audit / repo-guardrails（+废弃 _build-setup）
 └── AGENTS.md                       # 本文件
 ```
 
@@ -170,9 +170,20 @@ iscc /DAPP_VERSION=3.8.0 installer/MathLab.iss    # 产出 dist/MathLab-3.8.0-Wi
 - `installer/LICENSE.txt` 由根 `LICENSE`（Markdown）转出的纯文本，许可证变更时必须重新生成并逐条核对一致。
 - 卸载时自动清理运行时产物（`logs/`、`crash.log`、`webcache/`、`autosave/`），新增运行时写盘目录需同步 `[UninstallDelete]`。
 
----
+### 3.7 CI 工作流总览
 
-## 4. 架构约定（CRITICAL）
+| 工作流 | 触发 | 职责 |
+| :--- | :--- | :--- |
+| `test.yml` | push/PR | 3 OS × 3 Python 测试矩阵，分段跑 unit / integration / e2e |
+| `code-quality.yml` | push/PR | flake8 / pylint / mypy / import-check / bandit / safety / format-check / i18n / ui-style 八道门 |
+| `build-smoke.yml` | push/PR（打包相关路径） | PyInstaller ONEDIR 冒烟：C# + 前端 + 打包 + 产物结构 + 导入冒烟，把打包问题提前到 PR 阶段 |
+| `dependency-audit.yml` | 每周一 + 改依赖清单时 | `pip-audit` 漏洞扫描 + 三份依赖清单一致性（`TestDependencyParity`） |
+| `repo-guardrails.yml` | push/PR | 超大文件/复杂度**棘轮**、版本与许可证一致、locale 双语对称（`scripts/check_repo_guardrails.py`） |
+| `release.yml` | tag / 手动 | PyInstaller 打包 + Inno Setup + 发布 |
+
+> `_build-setup.yml` 为**废弃**：它的设计假设「环境准备 job 可被后续 job 复用」，但 GitHub Actions 的 job 之间不共享 runner 环境，无法被有效调用（`on.workflow_call.outputs` 也未声明）。新工作流一律自含完整步骤；如需真正复用请改成 composite action。
+
+---## 4. 架构约定（CRITICAL）
 
 ### 4.1 分层依赖方向
 
@@ -494,6 +505,7 @@ QTimer.singleShot(0, self._deferred_init)   # AI 集成 / ECharts 绑定 / REPL 
 | T-18 | UI 裸中文（剩余 232 处） | ⚠️ 部分修复（P2）：`_mixin_commands.py` 112 处裸中文清零（52 条命令 + 8 个分组名改走 `t()`，复用 `main_window.*` 已有 key），I3 从 345 降到 232 并把棘轮阈值同步收紧；Tab 标题、`.upper()` 强制大写、`retranslate_ui` 漏刷的 3 个 action 与 2 个 Tab 一并修复 | 剩余 232 处中相当比例是 AI prompt 模板（`ai_tools_panel` / `code_editor` 提示词）与长提示语，属功能性文本、改动影响 AI 行为，建议按面板单独批次推进；新增 UI 文案一律走 `t()` |
 | T-19 | 死代码与重复实现 | ✅ 已修（P2）：删除 `main_window` 闲置 `code_editor`（真正在用的是 `ai_tools_panel.code_editor`）；`_mixin_ai.handle_ai_explain` 里的 `ai_dock`/`ai_panel` 是从未创建的死属性（条件恒 False，AI 解释功能静默失效），改用真实的 `ai_tools_panel`；`_mixin_file_io` 的 `on_new_project`/`on_clear_canvas` 合并为 `_reset_workspace()`；`_mixin_ui_setup` 8 个同构 `toggle_*` 收敛到 `_toggle_widget()`（公开 API 保持不变）；`main_window.py` 注释与 `resize(1200,800)` 矛盾已澄清 | 新增面板显隐复用 `_toggle_widget`，不要再复制 show/hide 分支 |
 | T-20 | God Object / 超大文件 / 控件级样式债 | ❌ 未动（P2，需真实 Qt 环境）：`MainWindow` 7 个 Mixin 共享 `self`、约 118 个方法是"按文件切分的 God Object"；`canvas.py`(1541) / `ai_tools_panel.py`(1226) / `preferences_dialog.py`(799) 等超 800 行；`ui/` 仍有 103 处控件级 `setStyleSheet` + 259 处硬编码色值（棘轮已锁） | 这三类都要靠真实 Qt 跑 e2e 验证不回归，本地缺 PySide6 跑不了全量；建议单独立项：先给 MainWindow 的 `self.*` 建清单、再按面板拆大文件、最后把色值收进 `THEME_TOKENS`，每步补 `@pytest.mark.qt` 用例 |
+| T-21 | `_mixin_ai.py::execute_ai_action` 圈复杂度 41 | ❌ 未拆（本轮由 `check_repo_guardrails.py` 自动发现）：该函数是全仓最坏复杂度点（41 分支，算法含 If/For/While/Except/With/BoolOp/IfExp），棘轮阈值已锁定为 41 不得再升 | 建议按动作类型拆成策略分发（如 `_run_fit` / `_run_cluster` / `_run_generate_points`），每步跑 `pytest -m "not slow and not e2e"`；拆完把 `THRESHOLDS["max_function_complexity"]` 调低 |
 
 ---
 

@@ -1,0 +1,83 @@
+name: Repo Guardrails
+
+# 仓库结构守卫：超大文件棘轮、版本/许可证一致性、locale 双语对称。
+#
+# 目的：把 AGENTS.md 里「超 800 行的文件不要再膨胀」这类人工约定变成 CI 断言。
+# 阈值采用棘轮模式（只降不升）——把文件拆小、把函数拆短都允许，但反向恶化会变红。
+# 与 code-quality.yml 的 check_i18n / check_ui_style 同属「守卫」类，但检查维度不同。
+#
+# 阈值与检查项见 `mathlab/scripts/check_repo_guardrails.py`（唯一真源）。
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'mathlab/**.py'
+      - 'mathlab/locale/*.json'
+      - 'mathlab/utils/version.py'
+      - 'LICENSE'
+      - 'installer/LICENSE.txt'
+      - 'AGENTS.md'
+      - 'mathlab/scripts/check_repo_guardrails.py'
+      - '.github/workflows/repo-guardrails.yml'
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'mathlab/**.py'
+      - 'mathlab/locale/*.json'
+      - 'mathlab/utils/version.py'
+      - 'LICENSE'
+      - 'installer/LICENSE.txt'
+      - 'AGENTS.md'
+      - 'mathlab/scripts/check_repo_guardrails.py'
+      - '.github/workflows/repo-guardrails.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  checks: write
+
+concurrency:
+  group: repo-guardrails-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  guardrails:
+    name: Structural guardrails
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+        with:
+          egress-policy: audit
+
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Setup Python
+        uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b # v5.3.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Run guardrails
+        id: guardrails
+        run: |
+          set -euo pipefail
+          python mathlab/scripts/check_repo_guardrails.py --report | tee /tmp/guardrails.txt
+          echo "exit_code=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+
+      - name: Publish summary
+        if: always()
+        run: |
+          {
+            echo "## 仓库结构守卫"
+            echo ""
+            cat /tmp/guardrails.txt 2>/dev/null || echo "（无报告输出）"
+            echo ""
+            echo "---"
+            echo "阈值与检查项的唯一真源：\`mathlab/scripts/check_repo_guardrails.py\`"
+            echo "把文件拆小、把函数拆短会降低阈值；继续膨胀会让本 job 变红。"
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,159 @@
+name: Build Smoke
+
+# 打包冒烟：在 PR / push 阶段验证 PyInstaller 配置可用。
+# 目的：`mathlab.spec` / `setup.py` / 依赖清单 / hiddenimports 的错误，
+# 此前只在 release.yml 打包时才暴露。这里做一次「预演」，把问题提前到 PR。
+#
+# 注：`.github/workflows/_build-setup.yml` 因 GitHub Actions 的 job 之间不共享
+# runner 环境（环境准备 job 结束后即销毁），无法被有效复用，故本工作流自含完整步骤。
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'mathlab/**.py'
+      - 'mathlab/*.spec'
+      - 'mathlab/setup.py'
+      - 'mathlab/requirements.txt'
+      - 'requirements.txt'
+      - 'MathLab.CSharpEngine/**'
+      - 'mathlab/resources/**'
+      - '.github/workflows/build-smoke.yml'
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'mathlab/**.py'
+      - 'mathlab/*.spec'
+      - 'mathlab/setup.py'
+      - 'mathlab/requirements.txt'
+      - 'requirements.txt'
+      - 'MathLab.CSharpEngine/**'
+      - 'mathlab/resources/**'
+      - '.github/workflows/build-smoke.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: '3.11'
+  DOTNET_VERSION: '8.0.x'
+  NODE_VERSION: '24'
+
+jobs:
+  pyinstaller:
+    name: PyInstaller ONEDIR (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2022]
+
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+        with:
+          egress-policy: audit
+
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Build C# engine
+        run: dotnet build MathLab.CSharpEngine/MathLab.CSharpEngine.csproj -c Release
+
+      - name: Setup Node.js
+        uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: mathlab/resources/web_src/package-lock.json
+
+      - name: Build frontend bundles
+        run: |
+          cd mathlab/resources/web_src
+          npm ci
+          npm run build:all
+
+      - name: Setup Python
+        uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b # v5.3.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+          cache-dependency-path: requirements.txt
+
+      - name: Install build dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Run PyInstaller
+        run: pyinstaller mathlab.spec --clean --noconfirm
+
+      - name: Verify ONEDIR artifacts (POSIX)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -d dist/MathLab || { echo "::error::dist/MathLab 目录缺失"; exit 1; }
+          test -x dist/MathLab/mathlab || { echo "::error::主可执行文件缺失"; exit 1; }
+          for p in dist/MathLab/_internal/locale dist/MathLab/_internal; do
+            test -e "$p" || echo "::warning::未找到 $p（ONEDIR 布局可能不同，仅提示）"
+          done
+          echo "ONEDIR 产物结构检查通过"
+          du -sh dist/MathLab | tail -1
+
+      - name: Verify ONEDIR artifacts (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          if (-not (Test-Path 'dist/MathLab')) { Write-Error 'dist/MathLab 目录缺失'; exit 1 }
+          if (-not (Test-Path 'dist/MathLab/mathlab.exe')) { Write-Error '主可执行文件缺失'; exit 1 }
+          Write-Host "ONEDIR 产物结构检查通过"
+          Get-ChildItem dist/MathLab | Select-Object -First 10 Name
+
+      - name: Import smoke test
+        shell: bash
+        run: |
+          set -euo pipefail
+          # 验证打包所依赖的入口模块在源码侧仍可导入（PyInstaller 的
+          # hiddenimports 漂移时这里先红，而不是等到运行期）
+          python - <<'PY'
+          import importlib
+          mods = [
+              "mathlab.main",
+              "mathlab.core.geometry_engine",
+              "mathlab.core.cas_provider",
+              "mathlab.data.project_schema",
+              "mathlab.utils.config_manager",
+          ]
+          missing = []
+          for name in mods:
+              try:
+                  importlib.import_module(name)
+              except Exception as exc:  # noqa: BLE001
+                  missing.append(f"{name}: {exc}")
+          if missing:
+              raise SystemExit("导入冒烟失败:\n" + "\n".join(missing))
+          print("导入冒烟通过:", len(mods), "个模块")
+          PY
+
+      - name: Upload build log on failure
+        if: failure()
+        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
+        with:
+          name: build-smoke-${{ matrix.os }}
+          path: |
+            build/*.toc
+            build/*.log
+          retention-days: 7
+          if-no-files-found: ignore

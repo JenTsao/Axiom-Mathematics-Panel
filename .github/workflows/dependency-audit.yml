@@ -1,0 +1,121 @@
+name: Dependency Audit
+
+# 依赖健康：漏洞扫描 + 三份依赖清单一致性。
+# `code-quality.yml` 的 safety 用的是老牌 scanner（需维护漏洞库），
+# 这里补一个 pip-audit（PyPA 官方、基于 OSV/PyPI advisory），并把
+# 「根 requirements.txt / mathlab/requirements.txt / setup.py 三份清单必须一致」
+# 从人工约定变成定时+PR 自动检查（对应 AGENTS.md §1 与 T-16）。
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'requirements.txt'
+      - 'mathlab/requirements.txt'
+      - 'mathlab/setup.py'
+      - 'mathlab/tests/unit/test_p1_hardening.py'
+      - '.github/workflows/dependency-audit.yml'
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'requirements.txt'
+      - 'mathlab/requirements.txt'
+      - 'mathlab/setup.py'
+      - 'mathlab/tests/unit/test_p1_hardening.py'
+      - '.github/workflows/dependency-audit.yml'
+  schedule:
+    # 每周一 03:00 UTC 扫一次上游新增漏洞
+    - cron: '0 3 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+
+concurrency:
+  group: dependency-audit-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  pip-audit:
+    name: pip-audit vulnerability scan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+        with:
+          egress-policy: audit
+
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Setup Python
+        uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b # v5.3.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install pip-audit
+        run: |
+          python -m pip install --upgrade pip
+          pip install pip-audit
+
+      - name: Audit requirements.txt
+        run: pip-audit -r requirements.txt --progress-spinner off
+
+      - name: Audit mathlab/requirements.txt
+        run: pip-audit -r mathlab/requirements.txt --progress-spinner off
+
+      - name: Publish audit summary
+        if: always()
+        run: |
+          {
+            echo "## 依赖漏洞扫描"
+            echo ""
+            echo "- 扫描范围: \`requirements.txt\` + \`mathlab/requirements.txt\`"
+            echo "- 扫描工具: pip-audit（PyPA，基于 OSV / PyPI advisory）"
+            echo ""
+            echo "出现漏洞时请在本 job 日志中查看包名、版本与修复建议，并同步更新三份清单。"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  manifest-parity:
+    name: Three manifests stay in sync
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+        with:
+          egress-policy: audit
+
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Setup Python
+        uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b # v5.3.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install pytest
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest
+
+      - name: Run manifest parity tests
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          pytest mathlab/tests/unit/test_p1_hardening.py -k "DependencyParity" -v --no-header -p no:cacheprovider
+
+      - name: Parity summary
+        if: always()
+        run: |
+          {
+            echo "## 依赖清单一致性"
+            echo ""
+            echo "校验项（详见 \`mathlab/tests/unit/test_p1_hardening.py::TestDependencyParity\`）："
+            echo "1. 根 \`requirements.txt\`、\`mathlab/requirements.txt\`、\`setup.py install_requires\` 运行依赖集合一致"
+            echo "2. PySide6 版本下界三处一致（当前固定 \`>=6.6.0\`）"
+            echo "3. 每个运行依赖都有 \`>=\` 版本下界"
+          } >> "$GITHUB_STEP_SUMMARY"
