@@ -187,4 +187,5 @@ def test_qt_binding_prefers_pyside6():
     from mathlab.core import ai_engine_worker as worker
 
     source = inspect.getsource(worker)
-    assert source.index("from PySide6.QtCore") < source.index("from PyQt5.QtCore")
+    # 兼容 import 形态与 importlib 形态：只要 PySide6 排在 PyQt5 之前即可
+    assert source.index("PySide6.QtCore") < source.index("PyQt5.QtCore")

@@ -11,8 +11,10 @@
 ``AIManager`` 与三个 Agent 之间，改动任何一处都要在千行文件里定位。
 """
 
+import importlib
 import json
 from enum import Enum
+from typing import Any
 
 from mathlab.utils.logger import get_logger
 
@@ -21,21 +23,34 @@ logger = get_logger(__name__)
 # --- Qt / OpenAI 兼容层（全仓唯一一处，别处请从本模块 import） ----------------
 # 项目 GUI 绑定是 PySide6，必须优先加载：若同机装有 PyQt5 而本模块先选了它，
 # QObject / Signal 会与 UI 层的 PySide6 信号跨绑定失配（connect 静默失效）。
-try:
-    from PySide6.QtCore import QObject, QThread, Signal
+#
+# 这里用 importlib 动态取模块，而不是 try/except 嵌套 import：mypy 对嵌套
+# try 里的同名 import 会报 no-redef，对末尾 `= object` 兜底又报 Cannot assign
+# to a type；而 mypy.ini 开了 warn_unused_ignores，补 type: ignore 会在不报错的
+# 版本上变成 unused-ignore（本地 2.4.1 与 CI 判定不一致）。因此把三个符号显式
+# 声明为 Any，只在下面统一赋值一次，两个方向的问题同时消失。
+QObject: Any = None
+QThread: Any = None
+Signal: Any = None
+QT_AVAILABLE = False
 
-    QT_AVAILABLE = True
-except ImportError:
+for _module_name in ("PySide6.QtCore", "PyQt5.QtCore"):
     try:
-        from PyQt5.QtCore import QObject, QThread
-        from PyQt5.QtCore import pyqtSignal as Signal
+        _qt_core = importlib.import_module(_module_name)
+    except Exception:  # noqa: BLE001 - 任一绑定缺失都只是降级，不抛
+        continue
+    _signal = getattr(_qt_core, "Signal", None) or getattr(_qt_core, "pyqtSignal", None)
+    if _signal is None:
+        continue
+    QObject = _qt_core.QObject
+    QThread = _qt_core.QThread
+    Signal = _signal
+    QT_AVAILABLE = True
+    break
 
-        QT_AVAILABLE = True
-    except ImportError:
-        QT_AVAILABLE = False
-        # Qt 绑定未打桩，mypy 下这三个符号是 Any；勿加 type: ignore，
-        # 否则 warn_unused_ignores=true 会把它判为 unused-ignore（下方 openai 分支不同）。
-        QObject, QThread, Signal = object, object, object
+if not QT_AVAILABLE:
+    # Qt 绑定未打桩时兜底成 object；三个符号已声明为 Any，赋值不会触发类型冲突。
+    QObject = QThread = Signal = object
 
 try:
     from openai import (
