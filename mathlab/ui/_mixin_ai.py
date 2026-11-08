@@ -488,12 +488,18 @@ class AIMixin:
                 self.on_point_added(x, y)
 
     def handle_ai_explain(self, full_code, selected_code):
-        if hasattr(self, "ai_dock"):
-            self.ai_dock.setVisible(True)
-            self.ai_dock.raise_()
+        """让 AI 解释选中代码：唤醒 AI 工具面板并填入提示词。
 
+        历史代码写的是 ``self.ai_dock`` / ``self.ai_panel``，这两个属性全仓从未
+        创建，条件恒为 False，功能实际静默失效；真实面板属性是 ``ai_tools_panel``。
+        """
+        panel = getattr(self, "ai_tools_panel", None)
+        if panel is None:
+            logger.warning("AI 工具面板未就绪，跳过代码解释")
+            return
+
+        panel.show()
+        panel.raise_()
         user_prompt = prompt_manager.build("code_explainer", full_code=full_code, selected_code=selected_code)
-
-        if hasattr(self, "ai_panel"):
-            self.ai_panel.chat_input.setText(user_prompt)
-            self.ai_panel.on_send_message()
+        panel.chat_input.setText(user_prompt)
+        panel.on_send_message()

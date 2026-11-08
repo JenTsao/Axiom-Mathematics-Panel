@@ -58,7 +58,7 @@ class UISetupMixin:
         self.central_tabs.addTab(self.central_widget, t("main_window.geometry_tools") or "Geometry Canvas")
         self.central_tabs.addTab(self.notebook, t("notebook.title") or "Interactive Notebook")
         if self.geogebra_panel:
-            self.central_tabs.addTab(self.geogebra_panel, "Mini GeoGebra")
+            self.central_tabs.addTab(self.geogebra_panel, t("main_window.mini_geogebra"))
 
         # ── 🌌 JupyterLab 嵌入工作区 ────────────────────────────────────────────
         self._init_jupyter_tab()
@@ -78,7 +78,7 @@ class UISetupMixin:
             self.jupyter_mgr = JupyterManager()
             # 创建面板（此时服务还未就绪，面板显示加载动画）
             self.jupyter_workspace = JupyterPanel(self.jupyter_mgr.url, self)
-            self.central_tabs.addTab(self.jupyter_workspace, "🌌 Jupyter 工作区")
+            self.central_tabs.addTab(self.jupyter_workspace, t("main_window.jupyter_workspace"))
 
             # 在后台线程启动服务，就绪后触发页面加载
             import threading
@@ -193,66 +193,42 @@ class UISetupMixin:
         # add_new_cell 接收 CellType 枚举（此前误传 NotebookCell 实例）
         self.notebook.add_new_cell(CellType.CODE)
 
-    def toggle_algebra_panel(self, visible: bool) -> None:
+    def _toggle_widget(self, widget, visible: bool, raise_first: bool = False) -> None:
+        """面板显隐 + 淡入淡出的统一实现（供各 toggle_* 包装调用）。
+
+        ``raise_first=True`` 时先提到最前，用于后台 Tab / 右侧 dock 的面板。
+        """
         if visible:
-            self.algebra_panel.show()
-            fade_in(self.algebra_panel)
+            widget.show()
+            if raise_first:
+                widget.raise_()
+            fade_in(widget)
         else:
-            fade_out(self.algebra_panel, callback=self.algebra_panel.hide)
+            fade_out(widget, callback=widget.hide)
+
+    def toggle_algebra_panel(self, visible: bool) -> None:
+        self._toggle_widget(self.algebra_panel, visible)
 
     def toggle_properties_panel(self, visible: bool) -> None:
-        if visible:
-            self.properties_panel.show()
-            fade_in(self.properties_panel)
-        else:
-            fade_out(self.properties_panel, callback=self.properties_panel.hide)
+        self._toggle_widget(self.properties_panel, visible)
 
     def toggle_console(self, visible: bool) -> None:
-        if visible:
-            self.console.show()
-            fade_in(self.console)
-        else:
-            fade_out(self.console, callback=self.console.hide)
+        self._toggle_widget(self.console, visible)
 
     def toggle_algo_vis_panel(self, visible: bool) -> None:
-        if visible:
-            self.algo_vis_panel.show()
-            self.algo_vis_panel.raise_()
-            fade_in(self.algo_vis_panel)
-        else:
-            fade_out(self.algo_vis_panel, callback=self.algo_vis_panel.hide)
+        self._toggle_widget(self.algo_vis_panel, visible, raise_first=True)
 
     def toggle_ai_tools_panel(self, visible: bool) -> None:
-        if visible:
-            self.ai_tools_panel.show()
-            self.ai_tools_panel.raise_()
-            fade_in(self.ai_tools_panel)
-        else:
-            fade_out(self.ai_tools_panel, callback=self.ai_tools_panel.hide)
+        self._toggle_widget(self.ai_tools_panel, visible, raise_first=True)
 
     def toggle_function_explorer(self, visible: bool) -> None:
-        if visible:
-            self.function_explorer.show()
-            self.function_explorer.raise_()
-            fade_in(self.function_explorer)
-        else:
-            fade_out(self.function_explorer, callback=self.function_explorer.hide)
+        self._toggle_widget(self.function_explorer, visible, raise_first=True)
 
     def toggle_math_console(self, visible: bool) -> None:
-        if visible:
-            self.math_console.show()
-            self.math_console.raise_()
-            fade_in(self.math_console)
-        else:
-            fade_out(self.math_console, callback=self.math_console.hide)
+        self._toggle_widget(self.math_console, visible, raise_first=True)
 
     def toggle_notebook_panel(self, visible: bool) -> None:
-        if visible:
-            self.notebook.show()
-            self.notebook.raise_()
-            fade_in(self.notebook)
-        else:
-            fade_out(self.notebook, callback=self.notebook.hide)
+        self._toggle_widget(self.notebook, visible, raise_first=True)
 
     # ─────────────────────────────────────────────────────────────────────
     # ECharts 图表串联棕函数

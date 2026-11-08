@@ -164,6 +164,15 @@ class DialogsMixin:
             self.central_tabs.setTabText(
                 self.central_tabs.indexOf(self.notebook), t("notebook.title") or "Interactive Notebook"
             )
+            # R-23：补齐其余两个中央 Tab，此前只刷了 2 个
+            if getattr(self, "geogebra_panel", None) is not None:
+                self.central_tabs.setTabText(
+                    self.central_tabs.indexOf(self.geogebra_panel), t("main_window.mini_geogebra")
+                )
+            if getattr(self, "jupyter_workspace", None) is not None:
+                self.central_tabs.setTabText(
+                    self.central_tabs.indexOf(self.jupyter_workspace), t("main_window.jupyter_workspace")
+                )
 
         if hasattr(self, "notebook") and hasattr(self.notebook, "retranslate_ui"):
             self.notebook.retranslate_ui()
@@ -195,6 +204,10 @@ class DialogsMixin:
         self.console_action.setText(t("main_window.console"))
         self.algo_vis_action.setText(t("main_window.algorithm_visualization"))
         self.ai_tools_action.setText(t("main_window.ai_tools"))
+        # R-23：补齐此前漏刷的三个面板 action
+        self.notebook_action.setText(t("main_window.notebook"))
+        self.function_explorer_action.setText(t("function_explorer.title"))
+        self.math_console_action.setText(t("math_console.title"))
         self.theme_action.setText(t("main_window.theme"))
         self.language_action.setText(t("main_window.language"))
 

@@ -10,8 +10,8 @@
 | 类型 | PySide6 (Qt for Python) 跨平台桌面应用 |
 | Python | 3.10 – 3.12（CI 矩阵）；`mypy.ini` 固定 `python_version = 3.11` |
 | 许可证 | CASAL v1.0（`LICENSE` 正文标题即 v1.0，2026-07-21；源可用，禁止 AI/ML 训练；见 §8） |
-| 规模 | `mathlab/` 173 个 `.py` / 约 4.39 万行（不含 `resources/`）；其中 `ui/` 42 个模块 / 1.38 万行、`core/` 59 个 / 1.53 万行、`data/` 4 个 |
-| 测试 | 748 条用例（34 个 `test_*.py`）；日常快速回归跑 741 条（排除 `slow` / `e2e`），其中 26 条为 P0 回归（T-11~T-13）、21 条为 P1 加固回归（T-14~T-17） |
+| 规模 | `mathlab/` 174 个 `.py` / 约 4.39 万行（不含 `resources/`）；其中 `ui/` 42 个模块 / 1.38 万行、`core/` 59 个 / 1.53 万行、`data/` 4 个 |
+| 测试 | 757 条用例（35 个 `test_*.py`）；日常快速回归跑 750 条（排除 `slow` / `e2e`），其中 26 条 P0（T-11~T-13）、21 条 P1（T-14~T-17）、9 条 P2（T-18~T-20） |
 
 一句话定位：**在同一窗口内融合几何 DAG 引擎、符号/数值计算、内嵌 JupyterLab、AI 多智能体与插件生态的交互式数学工作台。**
 
@@ -59,7 +59,7 @@ Axiom Mathematics Panel/
 │   ├── locale/                     # zh.json / en.json（i18n 唯一数据源）
 │   ├── resources/                  # HTML / 图标 / monaco / web_src（前端产物）
 │   ├── docs/         (10 篇)       # api.md、user_guide.md、function_explorer_guide.md …
-│   ├── tests/                      # unit(29) / integration(2) / e2e(1) + 顶层 2
+│   ├── tests/                      # unit(30) / integration(2) / e2e(1) + 顶层 2
 │   ├── scripts/                    # check_i18n.py / check_ui_style.py（CI 守卫）/ update_i18n.py
 │   ├── settings.json               # 运行时配置（含 ai_api_key 字段，见 §8）
 │   ├── build_spec.spec             # PyInstaller 完整版（含 JupyterLab 资源）
@@ -387,7 +387,7 @@ QTimer.singleShot(0, self._deferred_init)   # AI 集成 / ECharts 绑定 / REPL 
 | 类型注解 | 公共函数签名必须注解；`mypy.ini` 中 `disallow_untyped_defs=false`，但对 `mathlab.ui.*` / `mathlab.utils.*` / `mathlab.plugins.*` 已 `ignore_errors=true`——**不要**借机放弃注解 |
 | 日志 | 一律 `from mathlab.utils.logger import get_logger` → `logger = get_logger(__name__)`；**禁止** `print()`（打包 `console=False` 时不可见）、禁止模块级 `logging.basicConfig`。异常用 `logger.error("...: %s", e, exc_info=True)` |
 | i18n | 一律 `from mathlab.utils.i18n_manager import t` → `t("namespace.key")`；**禁止硬编码中文/英文文案**。key 为点分路径，未命中时返回 key 本身 |
-| i18n 新增 | 新增 UI 面板/菜单必须**同时**在 `mathlab/locale/zh.json` 与 `en.json` 增加同名命名空间（`indent=2`、`ensure_ascii=False`）。当前 `zh.json` 与 `en.json` 各 **402 叶键、完全对称**（旧缺口 T-6 已修） |
+| i18n 新增 | 新增 UI 面板/菜单必须**同时**在 `mathlab/locale/zh.json` 与 `en.json` 增加同名命名空间（`indent=2`、`ensure_ascii=False`）。当前 `zh.json` 与 `en.json` 各 **472 叶键、完全对称**（旧缺口 T-6 已修；P2 新增 `commands.*` 51 键 + `main_window.mini_geogebra`/`jupyter_workspace`）。命令面板文案收口见 T-18 |
 | 命名 | 模块/函数 `snake_case`，类 `PascalCase`，常量 `UPPER_CASE`，Qt 私有槽 `_on_xxx` |
 | 文档字符串 | 公共类与方法写中文 docstring（Google 风格，`Args/Returns`）；`C0114/15/16` 已在 `.pylintrc` 关闭，不强制 |
 | 提交 | Conventional Commits：`feat(ui): …` / `fix(core): …` / `docs:` / `style:` / `refactor:` / `test:` / `chore:` |
@@ -491,6 +491,9 @@ QTimer.singleShot(0, self._deferred_init)   # AI 集成 / ECharts 绑定 / REPL 
 | T-15 | 双异常钩子静默覆盖 | ✅ 已修（P1）：`main.py:118 setup_logger()` 装的 hook 被 `:142 install_error_handler()` 覆盖，致命异常不落 `mathlab.log`。现在保存前一个 hook 并链式调用（幂等、防自递归），`KeyboardInterrupt` 短路不弹崩溃报告 | 新增全局钩子一律链式，禁止直接赋值 `sys.excepthook` |
 | T-16 | 三份依赖清单漂移 | ✅ 已修（P1）：PySide6 下界统一 `>=6.6.0`；根清单补齐 17 项版本下界；`setup.py install_requires` 从 7 项补齐到 20 项运行依赖（此前 `pip install mathlab` 装出的包跑不起来，而 CI 按根清单安装 → 本地/CI 判定分叉） | `TestDependencyParity` 会拦不一致；改一份必须同步三份 |
 | T-17 | Qt 绑定串线 / 沙箱双扫描漂移 / 信号文档失真 | ✅ 已收敛（P1）：`ai_engine_worker.py` 改为优先 PySide6、PyQt5 仅 fallback（同装两者时不再跨绑定失配）；`sandbox_script.py::visit_Call` 补齐与父进程一致的显式 `type()` 拦截，新增 `test_p1_hardening.py` 锁定 5 组规则集合相等 + 11 段代码两侧判定一致；`signals.py` 4 个无订阅者类标 DEPRECATED，§4.4 按源码事实重写（原声称"信号集中定义 / 接线统一在 SignalsMixin"与实测 244 处 connect 矛盾） | **放宽任一侧沙箱白名单都属违规**（§8）；改规则必须父子同步并补 parity 用例 |
+| T-18 | UI 裸中文（剩余 232 处） | ⚠️ 部分修复（P2）：`_mixin_commands.py` 112 处裸中文清零（52 条命令 + 8 个分组名改走 `t()`，复用 `main_window.*` 已有 key），I3 从 345 降到 232 并把棘轮阈值同步收紧；Tab 标题、`.upper()` 强制大写、`retranslate_ui` 漏刷的 3 个 action 与 2 个 Tab 一并修复 | 剩余 232 处中相当比例是 AI prompt 模板（`ai_tools_panel` / `code_editor` 提示词）与长提示语，属功能性文本、改动影响 AI 行为，建议按面板单独批次推进；新增 UI 文案一律走 `t()` |
+| T-19 | 死代码与重复实现 | ✅ 已修（P2）：删除 `main_window` 闲置 `code_editor`（真正在用的是 `ai_tools_panel.code_editor`）；`_mixin_ai.handle_ai_explain` 里的 `ai_dock`/`ai_panel` 是从未创建的死属性（条件恒 False，AI 解释功能静默失效），改用真实的 `ai_tools_panel`；`_mixin_file_io` 的 `on_new_project`/`on_clear_canvas` 合并为 `_reset_workspace()`；`_mixin_ui_setup` 8 个同构 `toggle_*` 收敛到 `_toggle_widget()`（公开 API 保持不变）；`main_window.py` 注释与 `resize(1200,800)` 矛盾已澄清 | 新增面板显隐复用 `_toggle_widget`，不要再复制 show/hide 分支 |
+| T-20 | God Object / 超大文件 / 控件级样式债 | ❌ 未动（P2，需真实 Qt 环境）：`MainWindow` 7 个 Mixin 共享 `self`、约 118 个方法是"按文件切分的 God Object"；`canvas.py`(1541) / `ai_tools_panel.py`(1226) / `preferences_dialog.py`(799) 等超 800 行；`ui/` 仍有 103 处控件级 `setStyleSheet` + 259 处硬编码色值（棘轮已锁） | 这三类都要靠真实 Qt 跑 e2e 验证不回归，本地缺 PySide6 跑不了全量；建议单独立项：先给 MainWindow 的 `self.*` 建清单、再按面板拆大文件、最后把色值收进 `THEME_TOKENS`，每步补 `@pytest.mark.qt` 用例 |
 
 ---
 

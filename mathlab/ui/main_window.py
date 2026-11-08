@@ -70,7 +70,7 @@ class MainWindow(
     def __init__(self):
         super().__init__()
         self.setWindowTitle(t("main_window.title"))
-        # 窗口几何由 session_state 恢复 / 默认布局给出（R-09：删除 1200×800 硬编码）
+        # 仅作首次启动的兜底尺寸；已有持久化布局时由 restore_session() 覆盖（R-09）
         self.resize(1200, 800)
 
         self._objects_data: dict = {}
@@ -171,11 +171,6 @@ class MainWindow(
         from mathlab.utils.config_manager import get_config
 
         self.undo_stack = UndoStack(self.geometry_engine, enabled=bool(get_config("enable_undo", True)))
-
-        # 将 ai_manager 注入给代码编辑器
-        from mathlab.ui.code_editor import AutocompleteTextEdit
-
-        self.code_editor = AutocompleteTextEdit(ai_manager=self.ai_manager)
 
     def _init_post_setup(self):
         """后置初始化：REPL 命名空间注入、事件监听注册、插件系统启动。"""

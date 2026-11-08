@@ -1,6 +1,7 @@
 """命令面板注册 Mixin。
 
 将 MainWindow 中与 CommandManager 命令注册相关的方法提取到此模块。
+所有用户可见文案一律走 ``t()``，key 收在 ``commands`` / ``main_window`` 命名空间。
 """
 
 import os
@@ -8,6 +9,7 @@ import platform
 import subprocess
 
 from mathlab.core.command_manager import Command
+from mathlab.utils.i18n_manager import t
 from mathlab.utils.logger import LOG_DIR, get_logger
 
 logger = get_logger(__name__)
@@ -34,228 +36,138 @@ class CommandsMixin:
         reg = self.cmd_manager.register
         C = Command
 
+        # 分组名一次性取值，避免每条命令重复调用 t()
+        g_view = t("commands.group_view")
+        g_file = t("commands.group_file")
+        g_canvas = t("commands.group_canvas")
+        g_workspace = t("commands.group_workspace")
+        g_var = t("commands.group_var")
+        g_tpl = t("commands.group_tpl")
+        g_edit = t("commands.group_edit")
+        g_system = t("commands.group_system")
+
         # ── 视图 ────────────────────────────────────────────────────────
-        reg(
-            C(
-                "view.algebra",
-                "显示 代数面板",
-                lambda: self.algebra_panel.show(),
-                "视图",
-                "Ctrl+1",
-            )
-        )  # noqa: E272,E241
+        reg(C("view.algebra", t("commands.view_show_algebra"), lambda: self.algebra_panel.show(), g_view, "Ctrl+1"))
         reg(
             C(
                 "view.properties",
-                "显示 属性面板",
+                t("commands.view_show_properties"),
                 lambda: self.properties_panel.show(),
-                "视图",
+                g_view,
                 "Ctrl+2",
             )
-        )  # noqa: E272,E241
-        reg(
-            C(
-                "view.console",
-                "显示 Python 控制台",
-                lambda: self.console.show(),
-                "视图",
-                "Ctrl+3",
-            )
-        )  # noqa: E272,E241
+        )
+        reg(C("view.console", t("commands.view_show_console"), lambda: self.console.show(), g_view, "Ctrl+3"))
         reg(
             C(
                 "view.algo",
-                "显示 算法可视化面板",
+                t("commands.view_show_algo"),
                 lambda: (self.algo_vis_panel.show(), self.algo_vis_panel.raise_()),
-                "视图",
+                g_view,
             )
-        )  # noqa: E272,E241
+        )
         reg(
             C(
                 "view.ai",
-                "显示 AI 工具面板",
+                t("commands.view_show_ai"),
                 lambda: (self.ai_tools_panel.show(), self.ai_tools_panel.raise_()),
-                "视图",
+                g_view,
             )
-        )  # noqa: E272,E241
+        )
         reg(
             C(
                 "view.function",
-                "显示 函数探索器",
-                lambda: (
-                    self.function_explorer.show(),
-                    self.function_explorer.raise_(),
-                ),
-                "视图",
+                t("commands.view_show_function"),
+                lambda: (self.function_explorer.show(), self.function_explorer.raise_()),
+                g_view,
             )
-        )  # noqa: E272,E241
-
-        reg(
-            C(
-                "view.hide.algebra",
-                "隐藏 代数面板",
-                lambda: self.algebra_panel.hide(),
-                "视图",
-            )
-        )  # noqa: E272,E241
+        )
+        reg(C("view.hide.algebra", t("commands.view_hide_algebra"), lambda: self.algebra_panel.hide(), g_view))
         reg(
             C(
                 "view.hide.properties",
-                "隐藏 属性面板",
+                t("commands.view_hide_properties"),
                 lambda: self.properties_panel.hide(),
-                "视图",
-            )
-        )  # noqa: E272,E241
-        reg(
-            C(
-                "view.hide.console",
-                "隐藏 Python 控制台",
-                lambda: self.console.hide(),
-                "视图",
-            )
-        )  # noqa: E272,E241
-        reg(
-            C(
-                "view.hide.algo",
-                "隐藏 算法可视化面板",
-                lambda: self.algo_vis_panel.hide(),
-                "视图",
-            )
-        )  # noqa: E272,E241
-        reg(
-            C(
-                "view.hide.ai",
-                "隐藏 AI 工具面板",
-                lambda: self.ai_tools_panel.hide(),
-                "视图",
-            )
-        )  # noqa: E272,E241
-
-        # ── 文件 ────────────────────────────────────────────────────────
-        reg(C("file.new", "新建项目", self.on_new_project, "文件", "Ctrl+N"))
-        reg(C("file.open", "打开项目…", self.on_open_project, "文件", "Ctrl+O"))
-        reg(C("file.save", "保存项目", self.on_save_project, "文件", "Ctrl+S"))
-        reg(
-            C(
-                "file.save_as",
-                "另存项目…",
-                self.on_save_project_as,
-                "文件",
-                "Ctrl+Shift+S",
+                g_view,
             )
         )
-        reg(C("file.export.png", "导出 PNG 图片", self.on_export_png, "文件"))
-        reg(C("file.export.svg", "导出 SVG 矢量图", self.on_export_svg, "文件"))
-        reg(C("file.export.tex", "导出 LaTeX 文档", self.on_export_latex, "文件"))
+        reg(C("view.hide.console", t("commands.view_hide_console"), lambda: self.console.hide(), g_view))
+        reg(C("view.hide.algo", t("commands.view_hide_algo"), lambda: self.algo_vis_panel.hide(), g_view))
+        reg(C("view.hide.ai", t("commands.view_hide_ai"), lambda: self.ai_tools_panel.hide(), g_view))
+
+        # ── 文件 ────────────────────────────────────────────────────────
+        reg(C("file.new", t("main_window.new_project"), self.on_new_project, g_file, "Ctrl+N"))
+        reg(C("file.open", t("main_window.open_project"), self.on_open_project, g_file, "Ctrl+O"))
+        reg(C("file.save", t("main_window.save_project"), self.on_save_project, g_file, "Ctrl+S"))
+        reg(C("file.save_as", t("main_window.save_as"), self.on_save_project_as, g_file, "Ctrl+Shift+S"))
+        reg(C("file.export.png", t("main_window.export_png"), self.on_export_png, g_file))
+        reg(C("file.export.svg", t("main_window.export_svg"), self.on_export_svg, g_file))
+        reg(C("file.export.tex", t("main_window.export_latex"), self.on_export_latex, g_file))
 
         # ── 画布 ────────────────────────────────────────────────────────
-        reg(C("canvas.clear", "清空画布与变量", self.on_clear_canvas, "画布"))
+        reg(C("canvas.clear", t("commands.canvas_clear"), self.on_clear_canvas, g_canvas))
         reg(
             C(
                 "canvas.zoom_in",
-                "放大画布",
+                t("main_window.zoom_in"),
                 lambda: self.central_widget.zoom_in(),
-                "画布",
+                g_canvas,
                 "Ctrl+=",
             )
-        )  # noqa: E272,E241
+        )
         reg(
             C(
                 "canvas.zoom_out",
-                "缩小画布",
+                t("main_window.zoom_out"),
                 lambda: self.central_widget.zoom_out(),
-                "画布",
+                g_canvas,
                 "Ctrl+-",
             )
-        )  # noqa: E272,E241
+        )
+        reg(C("tool.select", t("commands.tool_select"), lambda: self.on_action_selected("select"), g_canvas, "Alt+S"))
+        reg(C("tool.point", t("commands.tool_point"), lambda: self.on_action_selected("point"), g_canvas, "Alt+P"))
         reg(
-            C(
-                "tool.select",
-                "切换工具: 选择",
-                lambda: self.on_action_selected("select"),
-                "画布",
-                "Alt+S",
-            )
-        )  # noqa: E272,E241
+            C("tool.segment", t("commands.tool_segment"), lambda: self.on_action_selected("segment"), g_canvas, "Alt+L")
+        )
+        reg(C("tool.circle", t("commands.tool_circle"), lambda: self.on_action_selected("circle"), g_canvas, "Alt+C"))
         reg(
-            C(
-                "tool.point",
-                "切换工具: 点",
-                lambda: self.on_action_selected("point"),
-                "画布",
-                "Alt+P",
-            )
-        )  # noqa: E272,E241
-        reg(
-            C(
-                "tool.segment",
-                "切换工具: 线段",
-                lambda: self.on_action_selected("segment"),
-                "画布",
-                "Alt+L",
-            )
-        )  # noqa: E272,E241
-        reg(
-            C(
-                "tool.circle",
-                "切换工具: 圆",
-                lambda: self.on_action_selected("circle"),
-                "画布",
-                "Alt+C",
-            )
-        )  # noqa: E272,E241
-        reg(
-            C(
-                "tool.polygon",
-                "切换工具: 多边形",
-                lambda: self.on_action_selected("polygon"),
-                "画布",
-                "Alt+G",
-            )
-        )  # noqa: E272,E241
-        reg(
-            C(
-                "tool.pan",
-                "切换工具: 平移画布",
-                lambda: self.on_action_selected("pan"),
-                "画布",
-                "Alt+H",
-            )
-        )  # noqa: E272,E241
+            C("tool.polygon", t("commands.tool_polygon"), lambda: self.on_action_selected("polygon"), g_canvas, "Alt+G")
+        )
+        reg(C("tool.pan", t("commands.tool_pan"), lambda: self.on_action_selected("pan"), g_canvas, "Alt+H"))
 
-        # ── 笔记本与工作区 ────────────────────────────────────────────────────────
+        # ── 笔记本与工作区 ────────────────────────────────────────────────
         reg(
             C(
                 "notebook.new",
-                "新建笔记本 (> new notebook)",
+                t("commands.notebook_new"),
                 lambda: (
                     self.central_tabs.setCurrentWidget(self.notebook),
                     self.notebook.backend.cells.clear(),
                     self._refresh_notebook_ui(),
                 ),
-                "工作区",
+                g_workspace,
             )
         )
         reg(
             C(
                 "notebook.run_all",
-                "运行全部代码块 (> run all)",
+                t("commands.notebook_run_all"),
                 lambda: (
                     self.central_tabs.setCurrentWidget(self.notebook),
                     self.notebook.run_all_cells(),
                 ),
-                "工作区",
+                g_workspace,
             )
-        )  # noqa: E272,E241
+        )
         reg(
             C(
                 "notebook.clear",
-                "清空所有输出 (> clear output)",
+                t("commands.notebook_clear"),
                 lambda: (
                     self.central_tabs.setCurrentWidget(self.notebook),
                     self.notebook.clear_all_outputs(),
                 ),
-                "工作区",
+                g_workspace,
             )
         )
 
@@ -263,9 +175,9 @@ class CommandsMixin:
             reg(
                 C(
                     "geometry.open",
-                    "打开几何画板 (> open geometry)",
+                    t("commands.geometry_open"),
                     lambda: self.central_tabs.setCurrentWidget(self.geogebra_panel),
-                    "工作区",
+                    g_workspace,
                 )
             )
 
@@ -276,146 +188,82 @@ class CommandsMixin:
         reg(
             C(
                 "var.pi",
-                "注入常量: 圆周率 PI",
+                t("commands.var_pi"),
                 lambda: _inject("PI", "3.141592653589793"),
-                "变量",
+                g_var,
                 "",
                 "≈ 3.14159",
             )
-        )  # noqa: E272,E241
+        )
         reg(
             C(
                 "var.e",
-                "注入常量: 自然常数 E",
+                t("commands.var_e"),
                 lambda: _inject("E", "2.718281828459045"),
-                "变量",
+                g_var,
                 "",
                 "≈ 2.71828",
             )
-        )  # noqa: E272,E241
+        )
         reg(
             C(
                 "var.phi",
-                "注入常量: 黄金分割比 PHI",
+                t("commands.var_phi"),
                 lambda: _inject("PHI", "1.618033988749895"),
-                "变量",
+                g_var,
                 "",
                 "≈ 1.61803",
             )
-        )  # noqa: E272,E241
+        )
         reg(
             C(
                 "var.sqrt2",
-                "注入常量: 根号 2 SQRT2",
+                t("commands.var_sqrt2"),
                 lambda: _inject("SQRT2", "1.4142135623730951"),
-                "变量",
+                g_var,
                 "",
                 "≈ 1.41421",
             )
-        )  # noqa: E272,E241
-        reg(
-            C(
-                "var.inf",
-                "注入常量: 正无穷 INF",
-                lambda: _inject("INF", 'float("inf")'),
-                "变量",
-            )
-        )  # noqa: E272,E241
+        )
+        reg(C("var.inf", t("commands.var_inf"), lambda: _inject("INF", 'float("inf")'), g_var))
         reg(
             C(
                 "var.deg",
-                "注入常量: 度转弧系数 DEG2RAD",
+                t("commands.var_deg"),
                 lambda: _inject("DEG2RAD", "0.017453292519943295"),
-                "变量",
+                g_var,
                 "",
                 "° → rad",
             )
-        )  # noqa: E272,E241
+        )
 
         # ── 模板插入 ────────────────────────────────────────────────────
         def _insert(text):
             self.console.insert_text_at_cursor(text)
 
-        reg(
-            C(
-                "tpl.integrate",
-                "插入模板: 不定积分",
-                lambda: _insert("integrate(f, x)"),
-                "模板",
-            )
-        )  # noqa: E272,E241
-        reg(C("tpl.diff", "插入模板: 导数", lambda: _insert("diff(f, x)"), "模板"))  # noqa: E272,E241
-        reg(C("tpl.limit", "插入模板: 极限", lambda: _insert("limit(f, x, 0)"), "模板"))  # noqa: E272,E241
-        reg(C("tpl.solve", "插入模板: 方程求解", lambda: _insert("solve(f, x)"), "模板"))  # noqa: E272,E241
-        reg(
-            C(
-                "tpl.matrix",
-                "插入模板: 2x2 矩阵",
-                lambda: _insert("Matrix([[1,0],[0,1]])"),
-                "模板",
-            )
-        )  # noqa: E272,E241
-        reg(
-            C(
-                "tpl.plot_sin",
-                "插入模板: 正弦函数绘图",
-                lambda: _insert("sin(x)"),
-                "模板",
-            )
-        )  # noqa: E272,E241
-        reg(
-            C(
-                "tpl.plot_cos",
-                "插入模板: 余弦函数绘图",
-                lambda: _insert("cos(x)"),
-                "模板",
-            )
-        )  # noqa: E272,E241
-        reg(
-            C(
-                "tpl.plot_normal",
-                "插入模板: 正态分布函数",
-                lambda: _insert("exp(-x**2/2)"),
-                "模板",
-            )
-        )  # noqa: E272,E241
-        reg(
-            C(
-                "tpl.taylor",
-                "插入模板: Taylor 展开",
-                lambda: _insert("series(f, x, 0, 6)"),
-                "模板",
-            )
-        )  # noqa: E272,E241
+        reg(C("tpl.integrate", t("commands.tpl_integrate"), lambda: _insert("integrate(f, x)"), g_tpl))
+        reg(C("tpl.diff", t("commands.tpl_diff"), lambda: _insert("diff(f, x)"), g_tpl))
+        reg(C("tpl.limit", t("commands.tpl_limit"), lambda: _insert("limit(f, x, 0)"), g_tpl))
+        reg(C("tpl.solve", t("commands.tpl_solve"), lambda: _insert("solve(f, x)"), g_tpl))
+        reg(C("tpl.matrix", t("commands.tpl_matrix"), lambda: _insert("Matrix([[1,0],[0,1]])"), g_tpl))
+        reg(C("tpl.plot_sin", t("commands.tpl_plot_sin"), lambda: _insert("sin(x)"), g_tpl))
+        reg(C("tpl.plot_cos", t("commands.tpl_plot_cos"), lambda: _insert("cos(x)"), g_tpl))
+        reg(C("tpl.plot_normal", t("commands.tpl_plot_normal"), lambda: _insert("exp(-x**2/2)"), g_tpl))
+        reg(C("tpl.taylor", t("commands.tpl_taylor"), lambda: _insert("series(f, x, 0, 6)"), g_tpl))
 
         # ── 系统 ────────────────────────────────────────────────────────
         # ── 撤销/重做（R-10 / §6.4：不并轨 CommandManager，仅暴露给命令面板） ──
         undo_stack = getattr(self, "undo_stack", None)
         if undo_stack is not None and undo_stack.enabled:
-            reg(C("undo.last", "撤销", undo_stack.undo, "编辑", "Ctrl+Z"))
-            reg(C("redo.last", "重做", undo_stack.redo, "编辑", "Ctrl+Y"))
+            reg(C("undo.last", t("main_window.undo"), undo_stack.undo, g_edit, "Ctrl+Z"))
+            reg(C("redo.last", t("main_window.redo"), undo_stack.redo, g_edit, "Ctrl+Y"))
 
-        reg(
-            C(
-                "sys.preferences",
-                "打开首选项",
-                self.show_preferences_dialog,
-                "系统",
-                "Ctrl+,",
-            )
-        )
-        reg(
-            C(
-                "sys.theme",
-                "切换主题 / 深色模式 (> toggle dark mode)",
-                self._toggle_theme,
-                "系统",
-            )
-        )
-        reg(C("sys.language", "切换语言", self.show_language_dialog, "系统"))
-        reg(C("sys.about", "关于 Axiom Mathematics", self.show_about, "系统"))
-        reg(C("sys.console.clear", "清空控制台", self.console.clear, "系统"))
-        reg(C("sys.exit", "退出 MathLab (> exit)", self.close, "系统", "Alt+F4"))
+        reg(C("sys.preferences", t("main_window.preferences"), self.show_preferences_dialog, g_system, "Ctrl+,"))
+        reg(C("sys.theme", t("commands.sys_theme"), self._toggle_theme, g_system))
+        reg(C("sys.language", t("main_window.language"), self.show_language_dialog, g_system))
+        reg(C("sys.about", t("commands.sys_about"), self.show_about, g_system))
+        reg(C("sys.console.clear", t("commands.sys_console_clear"), self.console.clear, g_system))
+        reg(C("sys.exit", t("main_window.exit"), self.close, g_system, "Alt+F4"))
 
         # ── 日志 ────────────────────────────────────────────────────────
         def _open_log_dir():
@@ -431,14 +279,14 @@ class CommandsMixin:
             except Exception as e:
                 logger.error("无法打开日志目录: %s", e)
                 if hasattr(self, "console"):
-                    self.console.display_system_message(f"无法打开日志目录: {e}")
+                    self.console.display_system_message(t("commands.open_logs_failed", str(e)))
 
         reg(
             C(
                 "sys.open_logs",
-                "系统：打开运行日志目录 (Open Logs)",
+                t("commands.sys_open_logs"),
                 _open_log_dir,
-                "系统",
-                description=f"日志路径: {LOG_DIR}",
+                g_system,
+                description=f"{t('commands.log_path')}: {LOG_DIR}",
             )
         )

@@ -264,7 +264,7 @@ class AlgebraPanel(QDockWidget):
         outer_layout.setSpacing(0)
 
         # ── section title ─────────────────────────────────────────────
-        self._title_label = QLabel(t("algebra_panel.title").upper())
+        self._title_label = QLabel(t("algebra_panel.title"))
         self._title_label.setStyleSheet(
             "QLabel {"
             "  font-size: 11px; font-weight: 700;"
@@ -340,7 +340,7 @@ class AlgebraPanel(QDockWidget):
 
     def retranslate_ui(self) -> None:
         self.setWindowTitle(t("algebra_panel.title"))
-        self._title_label.setText(t("algebra_panel.title").upper())
+        self._title_label.setText(t("algebra_panel.title"))
 
     # ──────────────────────────────────────────────────────────────────
     # Internal slots

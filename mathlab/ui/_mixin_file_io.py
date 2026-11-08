@@ -18,16 +18,14 @@ class FileIOMixin:
     """MainWindow Mixin：文件操作。"""
 
     def on_new_project(self) -> None:
-        self.central_widget.clear_canvas()
-        self.algebra_panel.clear()
-        self.properties_panel.clear()
-        self.console.clear()
-        self._objects_data.clear()
-        if hasattr(self, "geometry_engine"):
-            self.geometry_engine.clear()
+        self._reset_workspace()
         self.current_project = None
 
     def on_clear_canvas(self) -> None:
+        self._reset_workspace()
+
+    def _reset_workspace(self) -> None:
+        """清空画布、面板与几何引擎状态（新建项目 / 清空画布共用）。"""
         self.central_widget.clear_canvas()
         self.algebra_panel.clear()
         self.properties_panel.clear()

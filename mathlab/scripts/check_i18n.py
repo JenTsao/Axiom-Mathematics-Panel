@@ -47,7 +47,7 @@ I3_SCAN_DIR = SRC_DIR / "ui"
 # 收敛方向是按面板批次把它压到 0（改小数字即可，不需要动逻辑）。
 # 2026-10 实测 345 处，TOP: _mixin_commands.py(112) / ai_tools_panel.py(71)
 # / function_explorer_panel.py(25) / _mixin_ai.py(21) / jupyter_panel.py(19)
-I3_UNTRANSLATED_THRESHOLD = 345
+I3_UNTRANSLATED_THRESHOLD = 232
 
 _CJK_RE = re.compile(r"[一-鿿]")
 
