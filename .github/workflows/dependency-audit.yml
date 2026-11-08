@@ -106,7 +106,9 @@ jobs:
         env:
           PYTHONPATH: ${{ github.workspace }}
         run: |
-          pytest mathlab/tests/unit/test_p1_hardening.py -k "DependencyParity" -v --no-header -p no:cacheprovider
+          # pyproject.toml 的 addopts 固定了 --cov 系列参数（需要 pytest-cov），
+          # 本 job 只验依赖清单一致性、不需要覆盖率，用 -o addopts="" 覆盖掉。
+          pytest mathlab/tests/unit/test_p1_hardening.py -k "DependencyParity" -v --no-header -p no:cacheprovider -o addopts=""
 
       - name: Parity summary
         if: always()
