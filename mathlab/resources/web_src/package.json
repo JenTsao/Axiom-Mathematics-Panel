@@ -14,7 +14,7 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
-    "monaco-editor": "^0.55.1"
+    "monaco-editor": "^0.57.0"
   },
   "devDependencies": {
     "css-loader": "^7.1.5",
