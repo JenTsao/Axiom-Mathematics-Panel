@@ -24,7 +24,7 @@ Pygments>=2.17
 jupyterlab>=4.0
 jupyter_client>=8.0
 ipykernel>=6.0
-jupyter_server>=2.0
+jupyter_server>=2.21.1
 requests>=2.31
 
 # ── C# 加速内核（pythonnet 桥接；缺失时相关模块自动降级）───────────────────
