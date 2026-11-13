@@ -9,6 +9,10 @@ updates:
     labels:
       - "dependencies"
       - "python"
+    ignore:
+      # 项目支持 Python 3.10–3.11（code-quality.yml 固定 3.11），networkx 3.7+ 仅支持 >=3.12
+      - dependency-name: "networkx"
+        versions: [">=3.7"]
 
   - package-ecosystem: "pip"
     directory: "/mathlab"
@@ -19,6 +23,9 @@ updates:
     labels:
       - "dependencies"
       - "python"
+    ignore:
+      - dependency-name: "networkx"
+        versions: [">=3.7"]
 
   - package-ecosystem: "npm"
     directory: "/mathlab/resources/web_src"
