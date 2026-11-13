@@ -44,8 +44,10 @@ jobs:
       fail-fast: false
       max-parallel: 4
       matrix:
-        os: [ubuntu-24.04, windows-2022, macos-14]
-        python-version: ["3.10", "3.11", "3.12"]
+        # PR 只跑 1 个 job 拿快速反馈；push main / 手动触发才展开完整 3×3 矩阵。
+        # 9 → 1 是 PR 阶段最大的一笔耗时节省，且不降低 main 分支的覆盖。
+        os: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-24.04"]' || '["ubuntu-24.04", "windows-2022", "macos-14"]') }}
+        python-version: ${{ fromJSON(github.event_name == 'pull_request' && '["3.11"]' || '["3.10", "3.11", "3.12"]') }}
 
     steps:
       - name: Harden Runner
@@ -97,39 +99,39 @@ jobs:
           pip install -r requirements.txt
           pip install pytest pytest-qt pytest-cov
 
-      - name: Run unit tests (Windows / macOS)
+      # 原来 unit / root / integration / e2e 分 4 次启动 pytest，每次都重做一遍
+      # 测试收集与 coverage 插桩。合并成 2 次：
+      #   ① mathlab/tests/ 全量（排除 e2e），-m "not slow"，含顶层的分层架构断言；
+      #   ② e2e 单独跑（沿用原语义，不加 -m），用 --cov-append 合并覆盖率。
+      - name: Run unit + root + integration tests (Windows / macOS)
         if: runner.os != 'Linux'
-        run: pytest mathlab/tests/unit/ -v --tb=long -m "not slow" --junitxml=test-results/unit-results.xml --cov=mathlab --cov-report=xml --cov-report=term-missing --cov-branch
+        run: >-
+          pytest mathlab/tests/ --ignore=mathlab/tests/e2e
+          -v --tb=long -m "not slow"
+          --junitxml=test-results/main-results.xml
+          --cov=mathlab --cov-report=xml --cov-report=term-missing --cov-branch
 
-      - name: Run unit tests (Linux)
+      - name: Run unit + root + integration tests (Linux)
         if: runner.os == 'Linux'
-        run: xvfb-run --auto-servernum pytest mathlab/tests/unit/ -v --tb=long -m "not slow" --junitxml=test-results/unit-results.xml --cov=mathlab --cov-report=xml --cov-report=term-missing --cov-branch
-
-      # mathlab/tests/ 顶层的 65 个用例此前 CI 从不执行（三个 Job 只点名子目录），
-      # 其中包括分层架构断言 test_architecture_refactor.py —— 恰恰是最该在 CI 兜住的那类。
-      - name: Run root-level tests (Windows / macOS)
-        if: runner.os != 'Linux'
-        run: pytest mathlab/tests/ --ignore=mathlab/tests/unit --ignore=mathlab/tests/integration --ignore=mathlab/tests/e2e -v --tb=long -m "not slow" --junitxml=test-results/root-results.xml --cov=mathlab --cov-append --cov-report=xml --cov-report=term-missing
-
-      - name: Run root-level tests (Linux)
-        if: runner.os == 'Linux'
-        run: xvfb-run --auto-servernum pytest mathlab/tests/ --ignore=mathlab/tests/unit --ignore=mathlab/tests/integration --ignore=mathlab/tests/e2e -v --tb=long -m "not slow" --junitxml=test-results/root-results.xml --cov=mathlab --cov-append --cov-report=xml --cov-report=term-missing
-
-      - name: Run integration tests (Windows / macOS)
-        if: runner.os != 'Linux'
-        run: pytest mathlab/tests/integration/ -v --tb=long -m "not slow" --junitxml=test-results/integration-results.xml --cov=mathlab --cov-append --cov-report=xml --cov-report=term-missing
-
-      - name: Run integration tests (Linux)
-        if: runner.os == 'Linux'
-        run: xvfb-run --auto-servernum pytest mathlab/tests/integration/ -v --tb=long -m "not slow" --junitxml=test-results/integration-results.xml --cov=mathlab --cov-append --cov-report=xml --cov-report=term-missing
+        run: >-
+          xvfb-run --auto-servernum pytest mathlab/tests/ --ignore=mathlab/tests/e2e
+          -v --tb=long -m "not slow"
+          --junitxml=test-results/main-results.xml
+          --cov=mathlab --cov-report=xml --cov-report=term-missing --cov-branch
 
       - name: Run e2e tests (Windows / macOS)
         if: runner.os != 'Linux'
-        run: pytest mathlab/tests/e2e/ -v --tb=long --junitxml=test-results/e2e-results.xml --cov=mathlab --cov-append --cov-report=xml --cov-report=term-missing
+        run: >-
+          pytest mathlab/tests/e2e/ -v --tb=long
+          --junitxml=test-results/e2e-results.xml
+          --cov=mathlab --cov-append --cov-report=xml --cov-report=term-missing
 
       - name: Run e2e tests (Linux)
         if: runner.os == 'Linux'
-        run: xvfb-run --auto-servernum pytest mathlab/tests/e2e/ -v --tb=long --junitxml=test-results/e2e-results.xml --cov=mathlab --cov-append --cov-report=xml --cov-report=term-missing
+        run: >-
+          xvfb-run --auto-servernum pytest mathlab/tests/e2e/ -v --tb=long
+          --junitxml=test-results/e2e-results.xml
+          --cov=mathlab --cov-append --cov-report=xml --cov-report=term-missing
 
       - name: Upload test results on failure
         if: failure()

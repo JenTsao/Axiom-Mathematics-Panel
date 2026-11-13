@@ -65,9 +65,13 @@ jobs:
       - name: Run guardrails
         id: guardrails
         run: |
-          set -euo pipefail
+          # 不能用 set -e：管道失败时 bash 会立即退出，PIPESTATUS 那行永远不执行。
+          # 这里显式取管道首段的返回码并作为步骤退出码传播。
+          set -uo pipefail
           python mathlab/scripts/check_repo_guardrails.py --report | tee /tmp/guardrails.txt
-          echo "exit_code=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+          rc=${PIPESTATUS[0]}
+          echo "exit_code=$rc" >> "$GITHUB_OUTPUT"
+          exit "$rc"
 
       - name: Publish summary
         if: always()

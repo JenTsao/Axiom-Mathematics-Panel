@@ -30,14 +30,17 @@ concurrency:
 env:
   PYTHON_VERSION: '3.11'
 
+# 原先 flake8 / bandit / black+isort / ui-style-guard / import-check 是 5 个
+# 互不依赖的 job，各自都只做静态扫描、都不需要 requirements.txt，却各自要
+# 启动一次 runner + setup-python。合并成 static-lint 后 PR 少 4 个 job。
 jobs:
   # ────────────────────────────────────────────────────────────────────────
-  # Job 1: 代码风格检查 (Flake8)
+  # Job 1: 纯静态检查（零项目依赖，一次安装全部 linter）
   # ────────────────────────────────────────────────────────────────────────
-  flake8:
-    name: Flake8 Style Check
+  static-lint:
+    name: Static Lint (Flake8 / Bandit / Black / Isort / Guards / Imports)
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 12
     steps:
       - name: Harden Runner
         uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
@@ -50,12 +53,13 @@ jobs:
         uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b # v5.3.0
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-          cache: 'pip'
 
-      - name: Install Flake8
-        run: pip install flake8 flake8-pyproject
+      - name: Install linters
+        run: pip install flake8 flake8-pyproject bandit black isort
 
+      # 下列步骤一律跑完再汇总失败，避免「修一个红一个、再推一次」的往返。
       - name: Run Flake8
+        if: always()
         run: |
           echo "🔍 正在检查代码风格 (Flake8)..."
           flake8 mathlab/ \
@@ -66,8 +70,108 @@ jobs:
             --statistics \
             --show-source
 
+      - name: Run Bandit security scan
+        if: always()
+        run: |
+          echo "🔍 正在进行安全扫描 (Bandit)..."
+          bandit -r mathlab/ \
+            -x mathlab/resources,mathlab/logs \
+            -f json \
+            -o bandit-report.json \
+            -ll \
+            -c .bandit
+
+      - name: Check Black formatting
+        if: always()
+        run: |
+          echo "🔍 检查 Black 代码格式..."
+          black mathlab/ \
+            --check \
+            --line-length=120 \
+            --extend-exclude='mathlab/resources|mathlab/logs' \
+            --diff
+
+      - name: Check Isort import order
+        if: always()
+        run: |
+          echo "🔍 检查 Isort 导入顺序..."
+          isort mathlab/ \
+            --check-only \
+            --profile black \
+            --skip-glob='mathlab/resources/*' \
+            --skip-glob='mathlab/logs/*' \
+            --diff
+
+      # UI 样式与 i18n 防回潮（UI_SYSTEM_DESIGN.md §7.3）
+      - name: Run UI style guard
+        if: always()
+        run: |
+          echo "🔍 正在检查 UI 内联样式与未连接 QAction..."
+          python mathlab/scripts/check_ui_style.py
+
+      - name: Run i18n guard
+        if: always()
+        run: |
+          echo "🔍 正在检查 i18n 覆盖与未本地化文案..."
+          python mathlab/scripts/check_i18n.py
+
+      # 纯 AST 检查内部导入路径，同样不需要安装 requirements.txt
+      - name: Verify all internal imports
+        if: always()
+        run: |
+          echo "🔍 正在验证所有内部导入的完整性..."
+          python -c "
+          import ast
+          import os
+          import sys
+          from pathlib import Path
+
+          errors = []
+          mathlab_dir = Path('mathlab')
+
+          for py_file in mathlab_dir.rglob('*.py'):
+              if 'resources' in py_file.parts:
+                  continue
+              try:
+                  with open(py_file, 'r', encoding='utf-8') as f:
+                      tree = ast.parse(f.read(), filename=str(py_file))
+
+                  for node in ast.walk(tree):
+                      if isinstance(node, ast.ImportFrom):
+                          module = node.module or ''
+                          if module.startswith('mathlab'):
+                              for alias in node.names:
+                                  name = alias.name
+                                  if name.startswith('_') or name in ('*',):
+                                      continue
+                                  module_path = module.replace('.', '/') + '.py'
+                                  if not os.path.exists(module_path):
+                                      pkg_path = module.replace('.', '/') + '/__init__.py'
+                                      if not os.path.exists(pkg_path):
+                                          errors.append(f'{py_file}:{node.lineno}: 模块 {module} 不存在')
+              except SyntaxError as e:
+                  errors.append(f'{py_file}: 语法错误 - {e}')
+
+          if errors:
+              print('❌ 发现导入问题:')
+              for err in errors:
+                  print(f'  - {err}')
+              sys.exit(1)
+          else:
+              print('✅ 所有内部导入检查通过')
+          "
+
+      - name: Upload Bandit report
+        if: always()
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
+        with:
+          name: bandit-report
+          path: bandit-report.json
+          retention-days: 14
+          if-no-files-found: ignore
+
   # ────────────────────────────────────────────────────────────────────────
-  # Job 2: 代码分析 (Pylint)
+  # Job 2: 代码分析 (Pylint) —— 需要项目依赖才能解析导入
   # ────────────────────────────────────────────────────────────────────────
   pylint:
     name: Pylint Analysis
@@ -151,121 +255,12 @@ jobs:
           mypy mathlab/ --config-file mypy.ini
 
   # ────────────────────────────────────────────────────────────────────────
-  # Job 4: 导入完整性检查 (项目特有)
-  # ────────────────────────────────────────────────────────────────────────
-  import-check:
-    name: Import Integrity Check
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    steps:
-      - name: Harden Runner
-        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
-        with:
-          egress-policy: audit
-
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-
-      - name: Setup Python
-        uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b # v5.3.0
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-          cache: 'pip'
-          cache-dependency-path: requirements.txt
-
-      - name: Install dependencies
-        run: pip install -r requirements.txt
-
-      - name: Verify all internal imports
-        run: |
-          echo "🔍 正在验证所有内部导入的完整性..."
-          python -c "
-          import ast
-          import os
-          import sys
-          from pathlib import Path
-
-          errors = []
-          mathlab_dir = Path('mathlab')
-
-          for py_file in mathlab_dir.rglob('*.py'):
-              if 'resources' in py_file.parts:
-                  continue
-              try:
-                  with open(py_file, 'r', encoding='utf-8') as f:
-                      tree = ast.parse(f.read(), filename=str(py_file))
-
-                  for node in ast.walk(tree):
-                      if isinstance(node, ast.ImportFrom):
-                          module = node.module or ''
-                          if module.startswith('mathlab'):
-                              for alias in node.names:
-                                  name = alias.name
-                                  if name.startswith('_') or name in ('*',):
-                                      continue
-                                  module_path = module.replace('.', '/') + '.py'
-                                  if not os.path.exists(module_path):
-                                      pkg_path = module.replace('.', '/') + '/__init__.py'
-                                      if not os.path.exists(pkg_path):
-                                          errors.append(f'{py_file}:{node.lineno}: 模块 {module} 不存在')
-              except SyntaxError as e:
-                  errors.append(f'{py_file}: 语法错误 - {e}')
-
-          if errors:
-              print('❌ 发现导入问题:')
-              for err in errors:
-                  print(f'  - {err}')
-              sys.exit(1)
-          else:
-              print('✅ 所有内部导入检查通过')
-          "
-
-  # ────────────────────────────────────────────────────────────────────────
-  # Job 5: 安全扫描 (Bandit)
-  # ────────────────────────────────────────────────────────────────────────
-  bandit:
-    name: Bandit Security Scan
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    steps:
-      - name: Harden Runner
-        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
-        with:
-          egress-policy: audit
-
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-
-      - name: Setup Python
-        uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b # v5.3.0
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-          cache: 'pip'
-
-      - name: Install Bandit
-        run: pip install bandit
-
-      - name: Run Bandit security scan
-        run: |
-          echo "🔍 正在进行安全扫描 (Bandit)..."
-          bandit -r mathlab/ \
-            -x mathlab/resources,mathlab/logs \
-            -f json \
-            -o bandit-report.json \
-            -ll \
-            -c .bandit
-
-      - name: Upload Bandit report
-        if: always()
-        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
-        with:
-          name: bandit-report
-          path: bandit-report.json
-          retention-days: 14
-
-  # ────────────────────────────────────────────────────────────────────────
-  # Job 6: 依赖安全检查 (Safety)
+  # Job 4: 依赖安全 (Safety) —— 仅 push / 手动触发
+  # PR 依赖没变时由 dependency-audit.yml 的 pip-audit 覆盖，不必每个 PR 重扫。
   # ────────────────────────────────────────────────────────────────────────
   safety:
     name: Safety Dependency Check
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -300,116 +295,34 @@ jobs:
           name: safety-report
           path: safety-report.json
           retention-days: 14
+          if-no-files-found: ignore
 
   # ────────────────────────────────────────────────────────────────────────
-  # Job 7: 代码格式检查 (Black + Isort)
-  # ────────────────────────────────────────────────────────────────────────
-  format-check:
-    name: Black & Isort Format Check
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    steps:
-      - name: Harden Runner
-        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
-        with:
-          egress-policy: audit
-
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-
-      - name: Setup Python
-        uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b # v5.3.0
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-          cache: 'pip'
-
-      - name: Install Black and Isort
-        run: pip install black isort
-
-      - name: Check Black formatting
-        run: |
-          echo "🔍 检查 Black 代码格式..."
-          black mathlab/ \
-            --check \
-            --line-length=120 \
-            --extend-exclude='mathlab/resources|mathlab/logs' \
-            --diff
-
-      - name: Check Isort import order
-        run: |
-          echo "🔍 检查 Isort 导入顺序..."
-          isort mathlab/ \
-            --check-only \
-            --profile black \
-            --skip-glob='mathlab/resources/*' \
-            --skip-glob='mathlab/logs/*' \
-            --diff
-
-  # ────────────────────────────────────────────────────────────────────────
-  # Job 8: UI 样式与 i18n 防回潮 (ui-style-guard — UI_SYSTEM_DESIGN.md §7.3)
-  # ────────────────────────────────────────────────────────────────────────
-  ui-style-guard:
-    name: UI Style & i18n Guard (S1/S2/S3 + I1/I3)
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    steps:
-      - name: Harden Runner
-        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
-        with:
-          egress-policy: audit
-
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-
-      - name: Setup Python
-        uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b # v5.3.0
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-
-      - name: Run UI style guard
-        run: |
-          echo "🔍 正在检查 UI 内联样式与未连接 QAction..."
-          python mathlab/scripts/check_ui_style.py
-
-      # i18n 守卫（I1 key 缺失 / I3 未走 t() 的裸中文棘轮）。
-      # 该脚本早已存在但从未接入 CI，导致 300+ 处硬编码文案无人拦截。
-      - name: Run i18n guard
-        run: |
-          echo "🔍 正在检查 i18n 覆盖与未本地化文案..."
-          python mathlab/scripts/check_i18n.py
-
-  # ────────────────────────────────────────────────────────────────────────
-  # Job 9: 汇总报告
+  # Job 5: 汇总报告
   # ────────────────────────────────────────────────────────────────────────
   summary:
     name: Quality Summary
     runs-on: ubuntu-24.04
     timeout-minutes: 5
-    needs: [flake8, pylint, mypy, import-check, bandit, safety, format-check, ui-style-guard]
+    needs: [static-lint, pylint, mypy, safety]
     if: always()
     steps:
       - name: Generate summary
         env:
-          FLAKE8_RESULT: ${{ needs.flake8.result }}
+          STATIC_LINT_RESULT: ${{ needs.static-lint.result }}
           PYLINT_RESULT: ${{ needs.pylint.result }}
           MYPY_RESULT: ${{ needs.mypy.result }}
-          IMPORT_CHECK_RESULT: ${{ needs.import-check.result }}
-          BANDIT_RESULT: ${{ needs.bandit.result }}
           SAFETY_RESULT: ${{ needs.safety.result }}
-          FORMAT_CHECK_RESULT: ${{ needs.format-check.result }}
-          UI_STYLE_GUARD_RESULT: ${{ needs.ui-style-guard.result }}
         run: |
           {
             echo "## 📊 代码质量检查报告"
             echo ""
             echo "| 检查项 | 状态 |"
             echo "|--------|------|"
-            echo "| Flake8 风格检查 | ${FLAKE8_RESULT} |"
+            echo "| 静态检查（Flake8 / Bandit / Black / Isort / UI+i18n / 导入完整性） | ${STATIC_LINT_RESULT} |"
             echo "| Pylint 代码分析 | ${PYLINT_RESULT} |"
             echo "| MyPy 类型检查 | ${MYPY_RESULT} |"
-            echo "| 导入完整性 | ${IMPORT_CHECK_RESULT} |"
-            echo "| Bandit 安全扫描 | ${BANDIT_RESULT} |"
-            echo "| Safety 依赖检查 | ${SAFETY_RESULT} |"
-            echo "| Black/Isort 格式 | ${FORMAT_CHECK_RESULT} |"
-            echo "| UI 样式防回潮 | ${UI_STYLE_GUARD_RESULT} |"
+            echo "| Safety 依赖检查（仅 push） | ${SAFETY_RESULT} |"
             echo ""
             echo "状态说明: ✅ success = 通过, ❌ failure = 失败, ⏭️ skipped = 跳过"
           } >> "$GITHUB_STEP_SUMMARY"

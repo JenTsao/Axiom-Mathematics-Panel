@@ -1,32 +1,43 @@
 name: Build Smoke
 
-# 打包冒烟：在 PR / push 阶段验证 PyInstaller 配置可用。
-# 目的：`mathlab.spec` / `setup.py` / 依赖清单 / hiddenimports 的错误，
-# 此前只在 release.yml 打包时才暴露。这里做一次「预演」，把问题提前到 PR。
+# 打包冒烟：两段式（整体由下方 paths 限定为「打包相关路径变更」才触发）。
+#   1. spec-static（秒级、零依赖）：AST 校验 spec / 入口 / hiddenimports，先行拦截。
+#   2. pyinstaller（重）：PR 只跑 Linux 单平台，push main / 手动触发才跑
+#      Linux + Windows 双平台。
+# 目的：`mathlab.spec` / `setup.py` / 依赖清单 / hiddenimports 的错误，此前只在
+# release.yml 打包时才暴露；这里做「预演」，但不让普通业务代码改动付出全量打包成本。
 #
-# 注：`.github/workflows/_build-setup.yml` 因 GitHub Actions 的 job 之间不共享
-# runner 环境（环境准备 job 结束后即销毁），无法被有效复用，故本工作流自含完整步骤。
+# 注 1：`.github/workflows/_build-setup.yml` 因 GitHub Actions 的 job 之间不共享
+#       runner 环境（环境准备 job 结束后即销毁），无法被有效复用，故本工作流自含步骤。
+# 注 2：绝不在 CI 里 `import mathlab.main`。该模块导入期就会初始化日志、清理临时
+#       文件、装全局 excepthook 并拉起 QtWebEngine / MainWindow 整条 GUI 栈，
+#       headless runner 上曾以 exit code 127 中止（日志停在 main.py:134）。
+#       导入冒烟改由 `scripts/check_build_spec.py --import-smoke` 在独立子进程里
+#       只导入无副作用的纯逻辑模块。
 
 on:
   push:
     branches: [main, develop]
+    # 刻意不含 'mathlab/**.py'：普通业务代码改动不触发全量打包，交给 test.yml 覆盖
     paths:
-      - 'mathlab/**.py'
       - 'mathlab/*.spec'
+      - 'mathlab/main.py'
       - 'mathlab/setup.py'
-      - 'mathlab/requirements.txt'
+      - 'mathlab/scripts/check_build_spec.py'
       - 'requirements.txt'
+      - 'mathlab/requirements.txt'
       - 'MathLab.CSharpEngine/**'
       - 'mathlab/resources/**'
       - '.github/workflows/build-smoke.yml'
   pull_request:
     branches: [main, develop]
     paths:
-      - 'mathlab/**.py'
       - 'mathlab/*.spec'
+      - 'mathlab/main.py'
       - 'mathlab/setup.py'
-      - 'mathlab/requirements.txt'
+      - 'mathlab/scripts/check_build_spec.py'
       - 'requirements.txt'
+      - 'mathlab/requirements.txt'
       - 'MathLab.CSharpEngine/**'
       - 'mathlab/resources/**'
       - '.github/workflows/build-smoke.yml'
@@ -43,16 +54,42 @@ env:
   PYTHON_VERSION: '3.11'
   DOTNET_VERSION: '8.0.x'
   NODE_VERSION: '24'
+  # headless runner：禁止任何 Qt 平台插件初始化
+  QT_QPA_PLATFORM: offscreen
+  PYTHONIOENCODING: utf-8
 
 jobs:
+  # ── 轻量前置：不需要 .NET / Node / PySide6 / PyInstaller ───────────────────
+  spec-static:
+    name: Spec & entrypoint (static)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+        with:
+          egress-policy: audit
+
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Setup Python
+        uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b # v5.3.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Check spec, entrypoint and hiddenimports
+        run: python mathlab/scripts/check_build_spec.py --report
+
+  # ── 重量打包：PR 单平台，push / 手动双平台 ─────────────────────────────────
   pyinstaller:
     name: PyInstaller ONEDIR (${{ matrix.os }})
+    needs: spec-static
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 35
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, windows-2022]
+        os: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-24.04"]' || '["ubuntu-24.04", "windows-2022"]') }}
 
     steps:
       - name: Harden Runner
@@ -80,7 +117,7 @@ jobs:
       - name: Build frontend bundles
         run: |
           cd mathlab/resources/web_src
-          npm ci
+          npm ci --prefer-offline --no-audit --no-fund
           npm run build:all
 
       - name: Setup Python
@@ -94,7 +131,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install pyinstaller
+          pip install "pyinstaller>=6,<7"
 
       - name: Run PyInstaller
         run: pyinstaller mathlab.spec --clean --noconfirm
@@ -121,31 +158,14 @@ jobs:
           Write-Host "ONEDIR 产物结构检查通过"
           Get-ChildItem dist/MathLab | Select-Object -First 10 Name
 
-      - name: Import smoke test
+      - name: Import smoke test (isolated subprocesses)
         shell: bash
         run: |
           set -euo pipefail
-          # 验证打包所依赖的入口模块在源码侧仍可导入（PyInstaller 的
-          # hiddenimports 漂移时这里先红，而不是等到运行期）
-          python - <<'PY'
-          import importlib
-          mods = [
-              "mathlab.main",
-              "mathlab.core.geometry_engine",
-              "mathlab.core.cas_provider",
-              "mathlab.data.project_schema",
-              "mathlab.utils.config_manager",
-          ]
-          missing = []
-          for name in mods:
-              try:
-                  importlib.import_module(name)
-              except Exception as exc:  # noqa: BLE001
-                  missing.append(f"{name}: {exc}")
-          if missing:
-              raise SystemExit("导入冒烟失败:\n" + "\n".join(missing))
-          print("导入冒烟通过:", len(mods), "个模块")
-          PY
+          # 显式校验解释器，避免 PATH 问题退化成难以定位的 exit 127
+          command -v python >/dev/null 2>&1 || { echo "::error::python 不在 PATH 上"; exit 1; }
+          # 每个模块在独立子进程中导入；不触碰 mathlab.main 的 GUI 启动链
+          python mathlab/scripts/check_build_spec.py --import-smoke --report
 
       - name: Upload build log on failure
         if: failure()

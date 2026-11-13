@@ -174,12 +174,18 @@ iscc /DAPP_VERSION=3.8.0 installer/MathLab.iss    # 产出 dist/MathLab-3.8.0-Wi
 
 | 工作流 | 触发 | 职责 |
 | :--- | :--- | :--- |
-| `test.yml` | push/PR | 3 OS × 3 Python 测试矩阵，分段跑 unit / integration / e2e |
-| `code-quality.yml` | push/PR | flake8 / pylint / mypy / import-check / bandit / safety / format-check / i18n / ui-style 八道门 |
-| `build-smoke.yml` | push/PR（打包相关路径） | PyInstaller ONEDIR 冒烟：C# + 前端 + 打包 + 产物结构 + 导入冒烟，把打包问题提前到 PR 阶段 |
+| `test.yml` | push/PR | **PR 1 job**（Ubuntu × 3.11）；push main / 手动 3 OS × 3 Python。2 轮 pytest：`tests/` 全量排除 e2e（`-m "not slow"`）+ e2e 单跑（`--cov-append`） |
+| `code-quality.yml` | push/PR | 4 个检查 job + 1 个汇总：`static-lint`（flake8 / bandit / black / isort / UI+i18n 守卫 / 导入完整性，零项目依赖）、`pylint`、`mypy`、`safety`（仅 push） |
+| `build-smoke.yml` | push/PR（**打包相关路径**） | 两段式：`spec-static`（秒级零依赖 AST 校验）→ `pyinstaller`（PR 仅 Ubuntu；push / 手动双平台），含产物结构与隔离子进程导入冒烟 |
 | `dependency-audit.yml` | 每周一 + 改依赖清单时 | `pip-audit` 漏洞扫描 + 三份依赖清单一致性（`TestDependencyParity`） |
 | `repo-guardrails.yml` | push/PR | 超大文件/复杂度**棘轮**、版本与许可证一致、locale 双语对称（`scripts/check_repo_guardrails.py`） |
 | `release.yml` | tag / 手动 | PyInstaller 打包 + Inno Setup + 发布 |
+
+**CI 耗时约定（PR 快速反馈）**：PR 只保留「能反映本次改动」的最小集合，完整矩阵与双平台打包留给 `main` 的 push / 手动触发；
+`build-smoke.yml` 的 `paths` **刻意不含** `mathlab/**.py`，普通业务代码改动不触发全量打包；轻量静态检查合并到单 job，避免重复启动 runner。
+
+**禁止在 CI 中 `import mathlab.main`**：`main.py` 模块级就会初始化日志、清理临时文件、安装全局 excepthook，并拉起 PySide6 / QtWebEngine / MainWindow 整条 GUI 栈；headless runner 上曾以 `exit code 127` 中止（日志停在 `main.py:134`）。
+打包配置的静态校验与导入冒烟统一走 `mathlab/scripts/check_build_spec.py`（`--import-smoke` 时每个纯逻辑模块放进独立子进程，绝不触碰入口模块）。
 
 > `_build-setup.yml` 为**废弃**：它的设计假设「环境准备 job 可被后续 job 复用」，但 GitHub Actions 的 job 之间不共享 runner 环境，无法被有效调用（`on.workflow_call.outputs` 也未声明）。新工作流一律自含完整步骤；如需真正复用请改成 composite action。
 
