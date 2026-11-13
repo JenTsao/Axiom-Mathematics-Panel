@@ -20,26 +20,20 @@ class AlgebraItemWidget(QFrame):
         self.entity_id = entity_id
 
         self.setFixedHeight(36)
-        self.setStyleSheet("AlgebraItemWidget { border-bottom: 1px solid #333; }")
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(10, 0, 10, 0)
 
         self.lbl_name = QLabel(f"<b>{name}</b>")
+        self.lbl_name.setObjectName("ggbAlgebraItemName")
         self.lbl_name.setFixedWidth(30)
-        self.lbl_name.setStyleSheet("color: #4EC9B0;")
 
         self.editor = QLineEdit(initial_text)
+        self.editor.setObjectName("ggbAlgebraEditor")
         self.editor.setReadOnly(not is_editable)
 
         if is_editable:
-            self.editor.setStyleSheet("""
-                QLineEdit { background: transparent; color: #d4d4d4; border: 1px dashed transparent; }
-                QLineEdit:focus { border: 1px dashed #007acc; background: #252526; }
-            """)
             self.editor.returnPressed.connect(self._on_enter_pressed)
-        else:
-            self.editor.setStyleSheet("QLineEdit { background: transparent; color: #858585; border: none; }")
 
         layout.addWidget(self.lbl_name)
         layout.addWidget(self.editor)
@@ -72,16 +66,14 @@ class GeoGebraAlgebraPanel(QWidget):
 
         t = get_i18n().t
         header = QLabel(t("geogebra.algebra_title") or "Algebra")
-        header.setStyleSheet(
-            "background-color: #2d2d2d; color: #cccccc; padding: 10px; font-weight: bold; border-bottom: 1px solid #1e1e1e;"
-        )
+        header.setObjectName("ggbAlgebraHeader")
 
         self.scroll_area = QScrollArea()
+        self.scroll_area.setObjectName("ggbAlgebraScroll")
         self.scroll_area.setWidgetResizable(True)
-        self.scroll_area.setStyleSheet("QScrollArea { border: none; background-color: #1e1e1e; }")
 
         self.list_container = QWidget()
-        self.list_container.setStyleSheet("background-color: #1e1e1e;")
+        self.list_container.setObjectName("ggbAlgebraList")
         self.list_layout = QVBoxLayout(self.list_container)
         self.list_layout.setContentsMargins(0, 0, 0, 0)
         self.list_layout.setSpacing(0)

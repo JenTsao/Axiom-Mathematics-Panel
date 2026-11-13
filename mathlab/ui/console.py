@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
 from mathlab.core.async_workers import TaskManager
 from mathlab.utils.i18n_manager import t
 from mathlab.utils.markdown_service import MarkdownService
+from mathlab.utils.theme_tokens import get_tokens
 
 
 class PythonConsole(QDockWidget):
@@ -39,7 +40,7 @@ class PythonConsole(QDockWidget):
         self.stop_button.setEnabled(False)
 
         self.kernel_status_label = QLabel(t("console.kernel_ready"))
-        self.kernel_status_label.setStyleSheet("color: #737686; font-size: 12px;")
+        self.kernel_status_label.setObjectName("consoleKernelStatus")
         self.kernel_status_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
 
         self.header_layout = QHBoxLayout()
@@ -110,15 +111,17 @@ class PythonConsole(QDockWidget):
 
     def append_agent_thought(self, thought_text):
         """渲染 AI 的思考流 (紫色系)，支持 Markdown + LaTeX"""
+        tok = get_tokens()
         md_svc = MarkdownService.get_instance()
         rendered = md_svc.render_for_text_browser(
             thought_text,
             document=self.output_area.document(),
         )
+        thought_lbl = t("console.agent_thought")
         html = f"""
         <div style='margin: 4px 0; font-family: "Consolas", monospace; font-size: 13px;'>
-            <span style='color: #B388FF; font-weight: bold;'>🧠 [Agent 思考]</span>
-            <span style='color: #E0E0E0;'> {rendered}</span>
+            <span style='color: {tok["obj.polygon"]}; font-weight: bold;'>{thought_lbl}</span>
+            <span style='color: {tok["fg.primary"]};'> {rendered}</span>
         </div>
         """
         self.output_area.append(html)
@@ -126,19 +129,21 @@ class PythonConsole(QDockWidget):
 
     def append_agent_observation(self, obs_text, is_error=False):
         """渲染本地沙箱的运行反馈 (成功绿 / 报错红)，支持 Markdown"""
-        color = "#FF5252" if is_error else "#69F0AE"
+        tok = get_tokens()
+        color = tok["danger"] if is_error else tok["success"]
         icon = "❌" if is_error else "✅"
-        bg_color = "rgba(255, 82, 82, 0.1)" if is_error else "rgba(105, 240, 174, 0.1)"
+        bg_color = tok["bg.inset"]
 
         md_svc = MarkdownService.get_instance()
         rendered = md_svc.render_for_text_browser(
             obs_text,
             document=self.output_area.document(),
         )
+        fb_lbl = t("console.sandbox_feedback")
         html = f"""
         <div style='margin: 4px 0; padding: 6px; background-color: {bg_color}; border-left: 3px solid {color}; font-family: "Consolas", monospace; font-size: 13px;'>
-            <span style='color: {color}; font-weight: bold;'>{icon} [沙箱反馈]</span><br>
-            <span style='color: #CCCCCC;'>{rendered}</span>
+            <span style='color: {color}; font-weight: bold;'>{icon} {fb_lbl}</span><br>
+            <span style='color: {tok["fg.secondary"]};'>{rendered}</span>
         </div>
         """
         self.output_area.append(html)
@@ -242,7 +247,7 @@ class PythonConsole(QDockWidget):
                         self.input_line.setText(current_text)
 
         def on_error(err_msg):
-            self.display_system_message(f"[补全异常] {err_msg}", level="error")
+            self.display_system_message(f"{t('console.complete_error')} {err_msg}", level="error")
 
         if self.python_repl:
             self.task_manager.submit(
@@ -303,13 +308,15 @@ class PythonConsole(QDockWidget):
             # 1. 定义成功后的 UI 更新回调
             def on_success(result):
                 if isinstance(result, dict) and result.get("error"):
-                    self.display_system_message(f"[注入失败] {var_name}: {result['error']}", level="error")
+                    self.display_system_message(
+                        f"{t('console.inject_failed')} {var_name}: {result['error']}", level="error"
+                    )
                 else:
-                    self.display_system_message(f"已异步注入变量: {var_name} = {value_expr}")
+                    self.display_system_message(f"{t('console.inject_async_ok')}: {var_name} = {value_expr}")
 
             # 2. 定义失败后的 UI 更新回调
             def on_error(err_msg):
-                self.display_system_message(f"[注入异常] {err_msg}", level="error")
+                self.display_system_message(f"{t('console.inject_error')} {err_msg}", level="error")
 
             # 3. 将阻塞的 execute 踢给后台线程池！主界面瞬间解放。
             self.task_manager.submit(
@@ -319,7 +326,7 @@ class PythonConsole(QDockWidget):
                 code=script,  # 传递给 execute 的参数
             )
         else:
-            self.display_system_message(f"已注入变量(仅提示): {var_name} = {value_expr}")
+            self.display_system_message(f"{t('console.inject_var_hint')}: {var_name} = {value_expr}")
 
     def insert_text_at_cursor(self, text: str) -> None:
         """将文本插入到输入框当前光标位置，焦点自动移到输入框。
@@ -333,7 +340,12 @@ class PythonConsole(QDockWidget):
 
     def display_system_message(self, message: str, level: str = "info") -> None:
         """向终端显示系统信息，支持错误 AI 拦截"""
-        color = {"info": "#475569", "warn": "#f59e0b", "error": "#dc2626"}.get(level, "#475569")
+        tok = get_tokens()
+        color = {
+            "info": tok["fg.secondary"],
+            "warn": tok["warning"],
+            "error": tok["danger"],
+        }.get(level, tok["fg.secondary"])
 
         if level == "error":
             safe_msg = message.replace("<", "&lt;").replace(">", "&gt;")
@@ -346,7 +358,12 @@ class PythonConsole(QDockWidget):
 
                 # 将错误信息进行 URL 编码，隐藏在链接中
                 encoded_err = urllib.parse.quote(message)
-                html_msg += f'<br><br><a href="ask_ai:{encoded_err}" style="color: #00A67E; text-decoration: none; font-weight: bold;">[🤖 报错了？点击让 AI 导师帮你分析原因并修复代码]</a><br>'
+                ask_ai_lbl = t("console.ask_ai_fix")
+                html_msg += (
+                    f'<br><br><a href="ask_ai:{encoded_err}" '
+                    f'style="color: {tok["success"]}; text-decoration: none; font-weight: bold;">'
+                    f"{ask_ai_lbl}</a><br>"
+                )
 
             self.output_area.append(html_msg)
             self.output_area.append("<br>")
@@ -371,6 +388,7 @@ class PythonConsole(QDockWidget):
                 ai_panel.raise_()
 
                 # 3. 自动帮用户填入 Prompt 并发送
-                prompt = f"我在运行 Python 沙箱代码时遇到了以下报错，请用初学者能听懂的话解释原因，并给出修复后的代码：\n```python\n{error_trace}\n```"
+                prompt_prefix = t("console.ai_fix_prompt")
+                prompt = f"{prompt_prefix}\n```python\n{error_trace}\n```"
                 ai_panel.chat_input.setText(prompt)
                 ai_panel.on_send_message()

@@ -45,9 +45,8 @@ I3_SCAN_DIR = SRC_DIR / "ui"
 
 # 棘轮阈值：等于当前实测值，任何新增裸中文都会让 CI 变红。
 # 收敛方向是按面板批次把它压到 0（改小数字即可，不需要动逻辑）。
-# 2026-10 实测 345 处，TOP: _mixin_commands.py(112) / ai_tools_panel.py(71)
-# / function_explorer_panel.py(25) / _mixin_ai.py(21) / jupyter_panel.py(19)
-I3_UNTRANSLATED_THRESHOLD = 232
+# 2026-10 实测 345 处，P2 降至 232，本轮收敛至 197
+I3_UNTRANSLATED_THRESHOLD = 197
 
 _CJK_RE = re.compile(r"[一-鿿]")
 

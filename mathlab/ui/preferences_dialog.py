@@ -499,39 +499,34 @@ class PreferencesDialog(QDialog):
 
         self.ai_provider_combo = QComboBox()
         provider_data = [
-            ("deepseek", t("preferences.ai_provider_deepseek") or "DeepSeek"),
-            ("openai", t("preferences.ai_provider_openai") or "OpenAI"),
-            ("siliconflow", t("preferences.ai_provider_siliconflow") or "硅基流动 (SiliconFlow)"),
-            ("ollama", t("preferences.ai_provider_ollama") or "Ollama (本地)"),
-            ("custom", t("preferences.ai_provider_custom") or "自定义"),
+            ("deepseek", t("preferences.ai_provider_deepseek")),
+            ("openai", t("preferences.ai_provider_openai")),
+            ("siliconflow", t("preferences.ai_provider_siliconflow")),
+            ("ollama", t("preferences.ai_provider_ollama")),
+            ("custom", t("preferences.ai_provider_custom")),
         ]
         for data, text in provider_data:
             self.ai_provider_combo.addItem(text, data)
         self.ai_provider_combo.currentIndexChanged.connect(self._on_ai_provider_changed)
 
         self.ai_base_url_input = QLineEdit()
-        self.ai_base_url_input.setPlaceholderText(
-            t("preferences.ai_base_url_placeholder") or "例如: https://api.deepseek.com/v1"
-        )
+        self.ai_base_url_input.setPlaceholderText(t("preferences.ai_base_url_placeholder"))
 
         self.ai_api_key_input = QLineEdit()
         self.ai_api_key_input.setPlaceholderText("sk-...")
         self.ai_api_key_input.setEchoMode(QLineEdit.EchoMode.Password)
 
         self.ai_model_input = QLineEdit()
-        self.ai_model_input.setPlaceholderText(t("preferences.ai_model_placeholder") or "例如: deepseek-chat")
+        self.ai_model_input.setPlaceholderText(t("preferences.ai_model_placeholder"))
 
-        form.addRow(t("preferences.ai_provider_label") or "服务提供商:", self.ai_provider_combo)
+        form.addRow(t("preferences.ai_provider_label"), self.ai_provider_combo)
         form.addRow("Base URL:", self.ai_base_url_input)
         form.addRow("API Key:", self.ai_api_key_input)
-        form.addRow(t("preferences.ai_model_label") or "默认模型:", self.ai_model_input)
+        form.addRow(t("preferences.ai_model_label"), self.ai_model_input)
 
         section_layout.addLayout(form)
 
-        tip_label = QLabel(
-            t("preferences.ai_lab_tip")
-            or "💡 提示: 数据请求将直接从您的本地网络发送至服务商，MathLab 不会收集您的 API Key。"
-        )
+        tip_label = QLabel(t("preferences.ai_lab_tip"))
         tip_label.setObjectName("prefHintLabel")
         section_layout.addWidget(tip_label)
 
@@ -620,12 +615,15 @@ class PreferencesDialog(QDialog):
 
     def _set_accent(self, hex_color: str):
         """选中强调色板按钮（O-2：token 覆写层，色值由 theme_manager 渲染时覆写）。"""
+        from mathlab.utils.theme_tokens import get_tokens
+
         self.settings["accent"] = hex_color
+        fg_primary = get_tokens()["fg.primary"]
         for color, btn in self.accent_btns:
             selected = color == hex_color
             btn.setChecked(selected)
             # ALLOWED-INLINE: dynamic accent swatch（选中描边随选中项变化）
-            border = "#1e293b" if selected else "transparent"
+            border = fg_primary if selected else "transparent"
             btn.setStyleSheet(f"background-color:{color}; border-radius:13px; border:2px solid {border};")
 
     def _on_lang_combo_changed(self, index: int):

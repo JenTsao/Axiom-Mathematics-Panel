@@ -67,13 +67,13 @@ class DialogsMixin:
 
         def log_pref(name, val):
             if hasattr(self, "console"):
-                self.console.display_system_message(f"偏好设置已更新: {name} (功能预留)", level="info")
+                self.console.display_system_message(t("dialogs.pref_updated_fmt").format(name), level="info")
 
-        dlg.accent_color_changed.connect(lambda c: log_pref("强调色", c))
-        dlg.font_changed.connect(lambda f, s: log_pref("字体", f"{f} {s}px"))
-        dlg.graphics_settings_changed.connect(lambda gfx: log_pref("图形设置", str(gfx)))
-        dlg.console_settings_changed.connect(lambda con: log_pref("控制台设置", str(con)))
-        dlg.advanced_settings_changed.connect(lambda adv: log_pref("高级设置", str(adv)))
+        dlg.accent_color_changed.connect(lambda c: log_pref(t("dialogs.pref_accent"), c))
+        dlg.font_changed.connect(lambda f, s: log_pref(t("dialogs.pref_font"), f"{f} {s}px"))
+        dlg.graphics_settings_changed.connect(lambda gfx: log_pref(t("dialogs.pref_graphics"), str(gfx)))
+        dlg.console_settings_changed.connect(lambda con: log_pref(t("dialogs.pref_console"), str(con)))
+        dlg.advanced_settings_changed.connect(lambda adv: log_pref(t("dialogs.pref_advanced"), str(adv)))
 
         # D-2 白纸开关 / D-3 撤销栈开关：即时生效
         dlg.canvas_white_paper_changed.connect(self.on_canvas_white_paper_changed)

@@ -733,3 +733,309 @@ QDockWidget QSlider::sub-page:horizontal {
     background: ${accent_base};
     border-radius: 2px;
 }
+
+/* 属性面板 名称/值 分段切换按钮 */
+QPushButton#tab_btn_left, QPushButton#tab_btn_right {
+    background: ${bg_surface};
+    color: ${fg_secondary};
+    font-size: 12px;
+    border: 1px solid ${border_subtle};
+    padding: 0 8px;
+}
+QPushButton#tab_btn_left:hover, QPushButton#tab_btn_right:hover {
+    background: ${bg_hover};
+}
+QPushButton#tab_btn_left:checked, QPushButton#tab_btn_right:checked {
+    background: ${accent_base};
+    color: ${fg_onAccent};
+    font-weight: 600;
+    border-color: ${accent_base};
+}
+QPushButton#tab_btn_left {
+    border-top-left-radius: 6px;
+    border-bottom-left-radius: 6px;
+}
+QPushButton#tab_btn_right {
+    border-top-right-radius: 6px;
+    border-bottom-right-radius: 6px;
+}
+
+/* Mini GeoGebra 面板 */
+QWidget#geogebraToolbar {
+    background: ${bg_surface};
+    border-bottom: 1px solid ${border_subtle};
+}
+QWidget#geogebraToolbar QPushButton {
+    background: transparent;
+    color: ${fg_primary};
+    border: none;
+    padding: 6px 12px;
+    border-radius: 4px;
+}
+QWidget#geogebraToolbar QPushButton:checked {
+    background: ${accent_base};
+    color: ${fg_onAccent};
+    font-weight: 600;
+}
+QWidget#geogebraToolbar QPushButton:hover:!checked {
+    background: ${bg_hover};
+}
+QSplitter#geogebraSplitter::handle {
+    background: ${border_subtle};
+    width: 2px;
+}
+
+/* MathConsole 交互式数学控制台 */
+QWidget#mathConsoleToolbar {
+    background: ${bg_surface};
+    border-bottom: 1px solid ${border_subtle};
+}
+QLabel#mathConsoleTitle {
+    color: ${success};
+    font-family: Consolas, "Courier New", monospace;
+    font-size: 12px;
+    font-weight: bold;
+}
+QLabel#mathConsoleWsLabel {
+    color: ${fg_muted};
+    font-size: 11px;
+}
+QPushButton#mathConsoleActionBtn {
+    background: ${bg_elevated};
+    color: ${fg_secondary};
+    border: 1px solid ${border_subtle};
+    border-radius: 3px;
+    padding: 0 10px;
+    font-size: 11px;
+}
+QPushButton#mathConsoleActionBtn:hover {
+    color: ${fg_primary};
+    border-color: ${border_strong};
+}
+QTextBrowser#mathConsoleOutput {
+    background: ${bg_canvas};
+    color: ${fg_primary};
+    border: none;
+    padding: 12px;
+}
+QWidget#mathConsoleInputRow {
+    background: ${bg_surface};
+    border-top: 2px solid ${accent_base};
+}
+QLabel#mathConsolePrompt {
+    color: ${obj_polygon};
+    font-family: Consolas, "Courier New", monospace;
+    font-size: 14px;
+    font-weight: bold;
+}
+QLineEdit#mathConsoleInput {
+    background: transparent;
+    color: ${accent_base};
+    border: none;
+    selection-background-color: ${bg_selected};
+}
+QPushButton#mathConsoleRunBtn {
+    background: ${accent_base};
+    color: ${fg_onAccent};
+    border: none;
+    border-radius: 4px;
+    padding: 0 14px;
+    font-size: 12px;
+    font-weight: bold;
+}
+QPushButton#mathConsoleRunBtn:hover {
+    background: ${accent_hover};
+}
+QPushButton#mathConsoleRunBtn:pressed {
+    background: ${accent_pressed};
+}
+
+/* CommandPalette 全局命令面板 & CommandBar */
+CommandPalette {
+    background: transparent;
+}
+QFrame#cp_frame {
+    background-color: ${bg_elevated};
+    border: 1px solid ${border_subtle};
+    border-radius: 10px;
+}
+QLineEdit#cp_input {
+    background-color: ${bg_surface};
+    color: ${fg_primary};
+    border: none;
+    border-bottom: 1px solid ${border_subtle};
+    border-radius: 0px;
+    padding: 0 16px;
+    font-size: 15px;
+    font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+QLineEdit#cp_input:focus {
+    outline: none;
+}
+QFrame#cp_sep {
+    background: ${border_subtle};
+    min-height: 1px;
+    max-height: 1px;
+    border: none;
+}
+QListWidget#cp_list {
+    background-color: ${bg_elevated};
+    color: ${fg_primary};
+    border: none;
+    border-radius: 0 0 10px 10px;
+    font-size: 13px;
+    font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    outline: 0;
+}
+QListWidget#cp_list::item {
+    padding: 0;
+    border: none;
+}
+QListWidget#cp_list::item:selected,
+QListWidget#cp_list::item:hover {
+    background: transparent;
+}
+QLabel#cp_empty_hint {
+    color: ${fg_muted};
+    font-size: 13px;
+    font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+QWidget#cp_cat_header {
+    background: ${bg_surface};
+}
+QLabel#cp_cat_label {
+    background: transparent;
+    color: ${fg_muted};
+    font-size: 10px;
+    font-weight: bold;
+    letter-spacing: 1px;
+}
+QWidget#cp_row {
+    background: transparent;
+}
+QWidget#cp_row:hover,
+QWidget#cp_row[selected="true"] {
+    background: ${bg_selected};
+    border-radius: 4px;
+}
+QLabel#cp_row_icon {
+    background: transparent;
+    color: ${fg_muted};
+    font-size: 14px;
+    min-width: 16px;
+}
+QLabel#cp_row_title {
+    background: transparent;
+    color: ${fg_primary};
+    font-size: 13px;
+}
+QLabel#cp_row_desc {
+    background: transparent;
+    color: ${fg_secondary};
+    font-size: 11px;
+}
+QLabel#cp_row_shortcut {
+    color: ${fg_secondary};
+    background: ${bg_surface};
+    border: 1px solid ${border_subtle};
+    border-radius: 3px;
+    padding: 1px 6px;
+    font-size: 11px;
+    font-family: "Consolas", monospace;
+}
+QLineEdit#commandBarEdit {
+    padding: 4px 12px;
+    border: 1px solid ${border_subtle};
+    border-radius: 4px;
+    background-color: ${bg_elevated};
+    color: ${fg_primary};
+    font-size: 13px;
+}
+QLineEdit#commandBarEdit:focus {
+    border-color: ${border_focus};
+}
+
+/* PythonConsole */
+QLabel#consoleKernelStatus {
+    color: ${fg_muted};
+    font-size: 12px;
+}
+
+/* GeoGebraAlgebraPanel */
+AlgebraItemWidget {
+    border-bottom: 1px solid ${border_subtle};
+}
+QLabel#ggbAlgebraItemName {
+    color: ${obj_circle};
+}
+QLineEdit#ggbAlgebraEditor {
+    background: transparent;
+    color: ${fg_primary};
+    border: 1px dashed transparent;
+}
+QLineEdit#ggbAlgebraEditor:focus {
+    border: 1px dashed ${border_focus};
+    background: ${bg_elevated};
+}
+QLineEdit#ggbAlgebraEditor[readOnly="true"] {
+    background: transparent;
+    color: ${fg_muted};
+    border: none;
+}
+QLabel#ggbAlgebraHeader {
+    background-color: ${bg_surface};
+    color: ${fg_primary};
+    padding: 10px;
+    font-weight: bold;
+    border-bottom: 1px solid ${border_subtle};
+}
+QScrollArea#ggbAlgebraScroll,
+QWidget#ggbAlgebraList {
+    border: none;
+    background-color: ${bg_base};
+}
+
+/* AlgebraPanel */
+QFrame#algebra_item {
+    background: transparent;
+    border-radius: 6px;
+}
+QFrame#algebra_item:hover {
+    background: ${bg_hover};
+    border-radius: 6px;
+}
+QFrame#algebra_item[selected="true"],
+QFrame#algebra_item[selected="true"]:hover {
+    background: ${bg_selected};
+    border-radius: 6px;
+}
+QFrame#algebra_item QLabel#item_name {
+    font-size: 14px;
+    font-weight: 600;
+    color: ${fg_primary};
+}
+QFrame#algebra_item QLabel#item_formula {
+    font-family: "Consolas", "JetBrains Mono", monospace;
+    font-size: 12px;
+    color: ${fg_secondary};
+}
+QFrame#algebra_item QLineEdit#equation_edit {
+    font-family: "Consolas", "JetBrains Mono", monospace;
+    font-size: 12px;
+    color: ${accent_base};
+    background: ${bg_base};
+    border: 1px solid ${border_focus};
+    border-radius: 3px;
+    padding: 2px 4px;
+}
+QLabel#algebraSectionTitle {
+    font-size: 11px;
+    font-weight: 700;
+    color: ${fg_muted};
+    letter-spacing: 1px;
+    padding: 2px 0 6px 0;
+}
+QFrame#algebraDivider {
+    color: ${border_subtle};
+    margin-bottom: 4px;
+}

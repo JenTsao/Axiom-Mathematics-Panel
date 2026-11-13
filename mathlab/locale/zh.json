@@ -87,7 +87,16 @@
     "execution_stopped": "执行已停止",
     "stop": "停止",
     "placeholder": "输入 Python 代码...",
-    "kernel_ready": "Python 3 | 内核: 就绪"
+    "kernel_ready": "Python 3 | 内核: 就绪",
+    "agent_thought": "🧠 [Agent 思考]",
+    "sandbox_feedback": "[沙箱反馈]",
+    "complete_error": "[补全异常]",
+    "inject_failed": "[注入失败]",
+    "inject_error": "[注入异常]",
+    "inject_async_ok": "已异步注入变量",
+    "inject_var_hint": "已注入变量(仅提示)",
+    "ask_ai_fix": "[🤖 报错了？点击让 AI 导师帮你分析原因并修复代码]",
+    "ai_fix_prompt": "我在运行 Python 沙箱代码时遇到了以下报错，请用初学者能听懂的话解释原因，并给出修复后的代码："
   },
   "preferences": {
     "title": "MathLab 设置",
@@ -307,6 +316,12 @@
     "choose_theme": "选择主题:",
     "apply": "应用",
     "cancel": "取消",
+    "pref_updated_fmt": "偏好设置已更新: {0} (功能预留)",
+    "pref_accent": "强调色",
+    "pref_font": "字体",
+    "pref_graphics": "图形设置",
+    "pref_console": "控制台设置",
+    "pref_advanced": "高级设置",
     "about_title": "关于 MathLab",
     "about_text": "MathLab - 交互式数学与 AI 教学软件\n\n版本 1.0\n\n一个通过交互式可视化学习数学和 AI 概念的强大工具。",
     "language": "语言",
@@ -397,7 +412,13 @@
     "canvas_cleared": "画布已清空",
     "cs_fractal_engine_unavailable": "C# 分形引擎不可用（pythonnet / .NET 缺失）",
     "cs_calculus_engine_unavailable": "C# 微积分引擎不可用（pythonnet / .NET 缺失）",
-    "cs_fft_engine_unavailable": "C# FFT 引擎不可用（pythonnet / .NET 缺失）"
+    "cs_fft_engine_unavailable": "C# FFT 引擎不可用（pythonnet / .NET 缺失）",
+    "formula_parse_failed": "公式解析失败: {0}",
+    "exec_exception": "执行异常: {0}",
+    "echarts_not_active": "⚠ ECharts 插件未激活，请先加载并打开《高级数据调参》面板。",
+    "jupyter_start_failed": "JupyterLab 服务器启动失败\n端口：{0}\n\n请确认 jupyterlab 已安装:\n  pip install jupyterlab",
+    "fractal_explorer_title": "双生分形引擎 (C# 加速)",
+    "fractal_gpu_title": "🚀 极致深渊：GPU 分形探索器"
   },
   "function_explorer": {
     "title": "函数探索器",
@@ -482,7 +503,9 @@
     "hint2": "<code style=\"color:{0};\">eig(A)</code> 计算特征值, ↑↓ 浏览历史",
     "reset_success": "✓ 工作区已重置",
     "workspace": "工作区",
-    "vars": "变量"
+    "vars": "变量",
+    "internal_error": "内部错误",
+    "matrix_summary_hint": "matrix（数据量较大，仅显示摘要）"
   },
   "animation": {
     "type": "动画类型",
@@ -514,7 +537,9 @@
     "cmd_stop": "动画: 停止"
   },
   "command_bar": {
-    "placeholder": "输入命令 (Ctrl+Shift+P 打开命令面板)"
+    "placeholder": "输入命令 (Ctrl+Shift+P 打开命令面板)",
+    "palette_placeholder": "输入命令名称或关键字...  (Ctrl+Shift+P)",
+    "palette_empty": "没有匹配的命令"
   },
   "geogebra": {
     "tool_move": "移动",

@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
 )
 
 from mathlab.core.command_manager import Command, CommandManager
+from mathlab.utils.i18n_manager import t
 
 # ══════════════════════════════════════════════════════════════════
 #  CommandPalette
@@ -43,59 +44,6 @@ class CommandPalette(QWidget):
 
     command_executed = Signal(str)  # 执行命令后发出命令 id
 
-    # ── 样式常量 ─────────────────────────────────────────────────
-    _STYLE = """
-        CommandPalette {
-            background: transparent;
-        }
-
-        #cp_frame {
-            background-color: #1e1f29;
-            border: 1px solid #3a3b4e;
-            border-radius: 10px;
-        }
-
-        #cp_input {
-            background-color: #252636;
-            color: #e8eaf0;
-            border: none;
-            border-bottom: 1px solid #3a3b4e;
-            border-radius: 0px;
-            padding: 0 16px;
-            font-size: 15px;
-            font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
-        }
-        #cp_input:focus {
-            outline: none;
-        }
-
-        #cp_list {
-            background-color: #1e1f29;
-            color: #c8cad8;
-            border: none;
-            border-radius: 0 0 10px 10px;
-            font-size: 13px;
-            font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
-            outline: 0;
-        }
-        #cp_list::item {
-            padding: 0;
-            border: none;
-        }
-        #cp_list::item:selected {
-            background: transparent;
-        }
-        #cp_list::item:hover {
-            background: transparent;
-        }
-
-        #cp_empty_hint {
-            color: #5a5c70;
-            font-size: 13px;
-            font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
-        }
-    """
-
     def __init__(self, command_manager: CommandManager, parent: QWidget = None):
         super().__init__(parent, Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
         self.setAttribute(Qt.WA_TranslucentBackground)
@@ -108,7 +56,6 @@ class CommandPalette(QWidget):
         self._debounce_timer.timeout.connect(self._do_update_list)
 
         self._build_ui()
-        self.setStyleSheet(self._STYLE)
 
         # 点击外部关闭
         self.installEventFilter(self)
@@ -138,14 +85,14 @@ class CommandPalette(QWidget):
         self._input = QLineEdit()
         self._input.setObjectName("cp_input")
         self._input.setFixedHeight(48)
-        self._input.setPlaceholderText("输入命令名称或关键字...  (Ctrl+Shift+P)")
+        self._input.setPlaceholderText(t("command_bar.palette_placeholder"))
         self._input.setClearButtonEnabled(True)
         frame_layout.addWidget(self._input)
 
         # 分隔线
         sep = QFrame()
+        sep.setObjectName("cp_sep")
         sep.setFrameShape(QFrame.HLine)
-        sep.setStyleSheet("background:#3a3b4e; min-height:1px; max-height:1px; border:none;")
         frame_layout.addWidget(sep)
 
         # ── 结果列表 ───────────────────────────────────────────
@@ -158,7 +105,7 @@ class CommandPalette(QWidget):
         frame_layout.addWidget(self._list)
 
         # 空结果提示（叠加在列表上方，用 stacked 方式隐藏）
-        self._empty_label = QLabel("没有匹配的命令")
+        self._empty_label = QLabel(t("command_bar.palette_empty"))
         self._empty_label.setObjectName("cp_empty_hint")
         self._empty_label.setAlignment(Qt.AlignCenter)
         self._empty_label.setFixedHeight(60)
@@ -276,14 +223,12 @@ class CommandPalette(QWidget):
 
     def _make_category_header(self, category: str) -> QWidget:
         w = QWidget()
-        w.setStyleSheet("background: #252636;")
+        w.setObjectName("cp_cat_header")
         w.setFixedHeight(22)
         layout = QHBoxLayout(w)
         layout.setContentsMargins(16, 0, 16, 0)
         lbl = QLabel(category.upper())
-        lbl.setStyleSheet(
-            "background: transparent; color: #5a5c78; font-size: 10px; font-weight: bold; letter-spacing: 1px;"
-        )
+        lbl.setObjectName("cp_cat_label")
         layout.addWidget(lbl)
         layout.addStretch()
         return w
@@ -291,10 +236,7 @@ class CommandPalette(QWidget):
     def _make_command_row(self, cmd: Command) -> QWidget:
         w = QWidget()
         w.setObjectName("cp_row")
-        w.setStyleSheet("""
-            QWidget#cp_row { background: transparent; }
-            QWidget#cp_row:hover { background: #2d2f42; border-radius: 4px; }
-        """)
+        w.setProperty("selected", False)
         w.setFixedHeight(44)
 
         layout = QHBoxLayout(w)
@@ -303,7 +245,7 @@ class CommandPalette(QWidget):
 
         # 图标占位（可后期换成真实图标）
         icon_lbl = QLabel("›")
-        icon_lbl.setStyleSheet("background: transparent; color: #5a5c78; font-size: 14px; min-width:16px;")
+        icon_lbl.setObjectName("cp_row_icon")
         icon_lbl.setAlignment(Qt.AlignCenter)
         layout.addWidget(icon_lbl)
 
@@ -311,12 +253,12 @@ class CommandPalette(QWidget):
         text_col = QVBoxLayout()
         text_col.setSpacing(1)
         title_lbl = QLabel(cmd.title)
-        title_lbl.setStyleSheet("background: transparent; color: #e8eaf0; font-size: 13px;")
+        title_lbl.setObjectName("cp_row_title")
         text_col.addWidget(title_lbl)
 
         if cmd.description:
             desc_lbl = QLabel(cmd.description)
-            desc_lbl.setStyleSheet("background: transparent; color: #6b6d84; font-size: 11px;")
+            desc_lbl.setObjectName("cp_row_desc")
             text_col.addWidget(desc_lbl)
 
         layout.addLayout(text_col)
@@ -325,15 +267,7 @@ class CommandPalette(QWidget):
         # 快捷键徽章
         if cmd.shortcut:
             sc_lbl = QLabel(cmd.shortcut)
-            sc_lbl.setStyleSheet(
-                "color: #8b8da4;"
-                "background: #2d2f42;"
-                "border: 1px solid #3a3b4e;"
-                "border-radius: 3px;"
-                "padding: 1px 6px;"
-                "font-size: 11px;"
-                "font-family: 'Consolas', monospace;"
-            )
+            sc_lbl.setObjectName("cp_row_shortcut")
             layout.addWidget(sc_lbl)
 
         return w
@@ -368,12 +302,9 @@ class CommandPalette(QWidget):
     def _highlight_row(self, item: QListWidgetItem, selected: bool):
         w = self._list.itemWidget(item)
         if w:
-            w.setStyleSheet(
-                "QWidget#cp_row { background: #2d2f42; border-radius:4px; }"
-                if selected
-                else "QWidget#cp_row { background: transparent; }"
-                "QWidget#cp_row:hover { background: #2d2f42; border-radius:4px; }"
-            )
+            w.setProperty("selected", selected)
+            w.style().unpolish(w)
+            w.style().polish(w)
 
     def _execute_selected(self):
         item = self._list.currentItem()
@@ -414,21 +345,12 @@ class CommandBar(QToolBar):
         super().__init__("Command Bar", parent)
 
         self.command_edit = QLineEdit()
+        self.command_edit.setObjectName("commandBarEdit")
         from mathlab.utils.i18n_manager import get_i18n
 
         self.command_edit.setPlaceholderText(
             get_i18n().t("command_bar.placeholder") or "Enter command (Ctrl+Shift+P to open Command Palette)"
         )
-        self.command_edit.setStyleSheet("""
-            QLineEdit {
-                padding: 4px 12px;
-                border: 1px solid #c3c6d7;
-                border-radius: 4px;
-                background-color: #ffffff;
-                font-size: 13px;
-            }
-            QLineEdit:focus { border-color: #004ac6; }
-        """)
         self.addWidget(self.command_edit)
         self.command_edit.returnPressed.connect(self._on_command_entered)
         self._setup_completer()

@@ -99,10 +99,7 @@ class UISetupMixin:
                     def _show_error():
                         if hasattr(self.jupyter_workspace, "_card"):
                             self.jupyter_workspace._card.show_error(
-                                f"JupyterLab 服务器启动失败\n"
-                                f"端口：{self.jupyter_mgr.port}\n\n"
-                                f"请确认 jupyterlab 已安装:\n"
-                                f"  pip install jupyterlab"
+                                t("errors.jupyter_start_failed").format(self.jupyter_mgr.port)
                             )
 
                     from PySide6.QtCore import QTimer

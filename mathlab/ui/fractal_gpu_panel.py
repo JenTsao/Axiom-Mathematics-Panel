@@ -4,11 +4,13 @@ from PySide6.QtCore import Qt, QUrl
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWidgets import QVBoxLayout, QWidget
 
+from mathlab.utils.i18n_manager import t
+
 
 class FractalGPUExplorer(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("🚀 极致深渊：GPU 分形探索器")
+        self.setWindowTitle(t("errors.fractal_gpu_title"))
         self.resize(1000, 800)
 
         # 视口状态管理

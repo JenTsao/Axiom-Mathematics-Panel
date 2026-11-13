@@ -11,7 +11,7 @@ from mathlab.utils.i18n_manager import t
 class FractalExplorer(QWidget):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("双生分形引擎 (C# 加速)")
+        self.setWindowTitle(t("errors.fractal_explorer_title"))
         layout = QHBoxLayout(self)
 
         # 图像分辨率设定 (为了 60fps 实时性，Julia 面板分辨率可以先设低一点，比如 400x400)

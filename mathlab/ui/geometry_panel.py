@@ -26,8 +26,8 @@ class GeometryPanel(QWidget):
 
         # ── 1. 顶部工具栏 ──
         self.toolbar = QWidget()
+        self.toolbar.setObjectName("geogebraToolbar")
         self.toolbar.setFixedHeight(45)
-        self.toolbar.setStyleSheet("background-color: #2d2d2d; border-bottom: 1px solid #1e1e1e;")
         tb_layout = QHBoxLayout(self.toolbar)
         tb_layout.setContentsMargins(10, 0, 10, 0)
         tb_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
@@ -50,11 +50,6 @@ class GeometryPanel(QWidget):
             btn = QPushButton(text)
             btn.setCheckable(True)
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            btn.setStyleSheet("""
-                QPushButton { background: transparent; color: #d4d4d4; border: none; padding: 6px 12px; border-radius: 4px; }
-                QPushButton:checked { background: #007acc; color: white; font-weight: bold; }
-                QPushButton:hover:!checked { background: #3c3c3c; }
-            """)
             btn.clicked.connect(lambda checked, m=mode: self.canvas.set_tool_mode(m))
             self.btn_group.addButton(btn)
             tb_layout.addWidget(btn)
@@ -64,6 +59,7 @@ class GeometryPanel(QWidget):
 
         # ── 2. 核心分割视窗 (左代数，右几何) ──
         self.splitter = QSplitter(Qt.Orientation.Horizontal)
+        self.splitter.setObjectName("geogebraSplitter")
 
         self.algebra_view = GeoGebraAlgebraPanel(self)
         self.canvas = GeoGebraCanvas(self)
@@ -72,7 +68,6 @@ class GeometryPanel(QWidget):
         self.splitter.addWidget(self.canvas)
 
         self.splitter.setSizes([250, 750])
-        self.splitter.setStyleSheet("QSplitter::handle { background-color: #333; width: 2px; }")
 
         self.layout.addWidget(self.splitter)
 

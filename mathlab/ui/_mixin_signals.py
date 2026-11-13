@@ -418,7 +418,7 @@ class SignalsMixin:
 
             # 2. 定义失败回调
             def on_error(err_msg):
-                self.console.display_system_message(f"公式解析失败: {err_msg}", level="error")
+                self.console.display_system_message(t("errors.formula_parse_failed").format(err_msg), level="error")
 
             # 3. 将阻塞的方程反解任务丢入线程池！
             TaskManager().submit(
@@ -452,7 +452,9 @@ class SignalsMixin:
             TaskManager().submit(
                 fn=self.python_repl.execute,
                 on_success=self.console.display_result,
-                on_error=lambda err: self.console.display_system_message(f"执行异常: {err}", level="error"),
+                on_error=lambda err: self.console.display_system_message(
+                    t("errors.exec_exception").format(err), level="error"
+                ),
                 group_id="console_exec",
                 code=command,
             )
@@ -522,7 +524,7 @@ class SignalsMixin:
             web_view.page().runJavaScript(js_code)
         else:
             # 如果 ECharts 插件尚未加载，向控制台显示提示
-            self.math_console.display_message("⚠ ECharts 插件未激活，请先加载并打开《高级数据调参》面板。", "warn")
+            self.math_console.display_message(t("errors.echarts_not_active"), "warn")
 
     def _get_echarts_webview(self):
         """

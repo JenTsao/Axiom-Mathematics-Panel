@@ -87,7 +87,16 @@
     "execution_stopped": "Execution stopped",
     "stop": "Stop",
     "placeholder": "Enter Python code...",
-    "kernel_ready": "Python 3 | Kernel: Ready"
+    "kernel_ready": "Python 3 | Kernel: Ready",
+    "agent_thought": "🧠 [Agent Thought]",
+    "sandbox_feedback": "[Sandbox Feedback]",
+    "complete_error": "[Completion Error]",
+    "inject_failed": "[Inject Failed]",
+    "inject_error": "[Inject Error]",
+    "inject_async_ok": "Variable injected asynchronously",
+    "inject_var_hint": "Variable injected (hint only)",
+    "ask_ai_fix": "[🤖 Error? Click to let AI Tutor analyze and fix the code]",
+    "ai_fix_prompt": "I encountered the following error while running Python sandbox code. Please explain the cause in beginner-friendly terms and provide fixed code:"
   },
   "preferences": {
     "title": "MathLab Settings",
@@ -307,6 +316,12 @@
     "choose_theme": "Choose a theme:",
     "apply": "Apply",
     "cancel": "Cancel",
+    "pref_updated_fmt": "Preference updated: {0} (reserved)",
+    "pref_accent": "Accent Color",
+    "pref_font": "Font",
+    "pref_graphics": "Graphics Settings",
+    "pref_console": "Console Settings",
+    "pref_advanced": "Advanced Settings",
     "about_title": "About MathLab",
     "about_text": "MathLab - Interactive Mathematics and AI Teaching Software\n\nVersion 1.0\n\nA powerful tool for learning mathematics and AI concepts through interactive visualization.",
     "language": "Language",
@@ -397,7 +412,13 @@
     "canvas_cleared": "Canvas cleared",
     "cs_fractal_engine_unavailable": "C# fractal engine unavailable (pythonnet / .NET missing)",
     "cs_calculus_engine_unavailable": "C# calculus engine unavailable (pythonnet / .NET missing)",
-    "cs_fft_engine_unavailable": "C# FFT engine unavailable (pythonnet / .NET missing)"
+    "cs_fft_engine_unavailable": "C# FFT engine unavailable (pythonnet / .NET missing)",
+    "formula_parse_failed": "Formula parse failed: {0}",
+    "exec_exception": "Execution exception: {0}",
+    "echarts_not_active": "⚠ ECharts plugin is not active. Please load and open the Advanced Data Tuning panel first.",
+    "jupyter_start_failed": "JupyterLab server failed to start\nPort: {0}\n\nPlease verify jupyterlab is installed:\n  pip install jupyterlab",
+    "fractal_explorer_title": "Twin Fractal Engine (C# Accelerated)",
+    "fractal_gpu_title": "🚀 Ultimate Abyss: GPU Fractal Explorer"
   },
   "function_explorer": {
     "title": "Function Explorer",
@@ -500,7 +521,9 @@
     "cmd_stop": "Animation: Stop"
   },
   "command_bar": {
-    "placeholder": "Enter command (Ctrl+Shift+P to open Command Palette)"
+    "placeholder": "Enter command (Ctrl+Shift+P to open Command Palette)",
+    "palette_placeholder": "Enter command name or keyword...  (Ctrl+Shift+P)",
+    "palette_empty": "No matching commands"
   },
   "geogebra": {
     "tool_move": "Move",
@@ -521,7 +544,9 @@
     "hint2": "<code style=\"color:{0};\">eig(A)</code> for eigenvalues, ↑↓ to browse history",
     "reset_success": "✓ Workspace reset",
     "workspace": "Workspace",
-    "vars": "vars"
+    "vars": "vars",
+    "internal_error": "Internal error",
+    "matrix_summary_hint": "matrix (large, showing summary only)"
   },
   "view": {
     "reset_layout": "Reset Default Layout"

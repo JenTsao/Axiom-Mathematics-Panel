@@ -1,8 +1,8 @@
 """
 Algebra Panel — redesigned with a custom card list:
   • Each entry: coloured dot  +  two-line text (name bold / formula monospace)
-  • Selected state: light-blue background (#d3e4fe)
-  • Hover state   : lighter background   (#eff4ff)
+  • Selected state: themed bg.selected
+  • Hover state   : themed bg.hover
   • Right-click context menu: Rename / Delete
 """
 
@@ -23,18 +23,24 @@ from PySide6.QtWidgets import (
 )
 
 from mathlab.utils.i18n_manager import t
+from mathlab.utils.theme_tokens import get_tokens
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Colour palette per object type
+# Colour palette per object type (derived from theme tokens)
 # ──────────────────────────────────────────────────────────────────────────────
 
-_TYPE_COLORS: dict[str, str] = {
-    "Point": "#004ac6",
-    "Segment": "#4b41e1",
-    "Circle": "#006058",
-    "Polygon": "#9333ea",
+_TYPE_TOKEN_KEYS: dict[str, str] = {
+    "Point": "obj.point",
+    "Segment": "obj.segment",
+    "Circle": "obj.circle",
+    "Polygon": "obj.polygon",
 }
-_DEFAULT_COLOR = "#737686"
+
+
+def _type_color(obj_type: str) -> str:
+    tok = get_tokens()
+    key = _TYPE_TOKEN_KEYS.get(obj_type, "fg.muted")
+    return tok.get(key, tok["fg.muted"])
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -99,7 +105,7 @@ class _AlgebraItem(QFrame):
         self.customContextMenuRequested.connect(self._show_context_menu)
 
         # ── dot ──────────────────────────────────────────────────────
-        hex_col = _TYPE_COLORS.get(self._obj_type, _DEFAULT_COLOR)
+        hex_col = _type_color(self._obj_type)
         hollow = self._obj_type == "Circle"
         dot = _ColorDot(hex_col, hollow)
 
@@ -175,36 +181,12 @@ class _AlgebraItem(QFrame):
     # ── style helpers ─────────────────────────────────────────────────
 
     def _apply_base_style(self):
-        self._name_label.setStyleSheet("QLabel { font-size: 14px; font-weight: 600; color: #0b1c30; }")
-        self._formula_label.setStyleSheet(
-            "QLabel {"
-            "  font-family: 'Consolas', 'JetBrains Mono', monospace;"
-            "  font-size: 12px;"
-            "  color: #434655;"
-            "}"
-        )
-        self._equation_edit.setStyleSheet(
-            "QLineEdit {"
-            "  font-family: 'Consolas', 'JetBrains Mono', monospace;"
-            "  font-size: 12px;"
-            "  color: #004ac6;"
-            "  background: #fff;"
-            "  border: 1px solid #004ac6;"
-            "  border-radius: 3px;"
-            "  padding: 2px 4px;"
-            "}"
-        )
         self._refresh_bg()
 
     def _refresh_bg(self):
-        if self._selected:
-            bg = "#d3e4fe"
-        else:
-            bg = "transparent"
-        self.setStyleSheet(
-            f"QFrame#algebra_item {{ background: {bg}; border-radius: 6px; }}"
-            f"QFrame#algebra_item:hover {{ background: {'#d3e4fe' if self._selected else '#eff4ff'}; border-radius: 6px; }}"
-        )
+        self.setProperty("selected", self._selected)
+        self.style().unpolish(self)
+        self.style().polish(self)
 
     # ── events ────────────────────────────────────────────────────────
 
@@ -265,20 +247,14 @@ class AlgebraPanel(QDockWidget):
 
         # ── section title ─────────────────────────────────────────────
         self._title_label = QLabel(t("algebra_panel.title"))
-        self._title_label.setStyleSheet(
-            "QLabel {"
-            "  font-size: 11px; font-weight: 700;"
-            "  color: #737686; letter-spacing: 1px;"
-            "  padding: 2px 0 6px 0;"
-            "}"
-        )
+        self._title_label.setObjectName("algebraSectionTitle")
         outer_layout.addWidget(self._title_label)
 
         # ── divider ───────────────────────────────────────────────────
         div = QFrame()
+        div.setObjectName("algebraDivider")
         div.setFrameShape(QFrame.Shape.HLine)
         div.setFrameShadow(QFrame.Shadow.Sunken)
-        div.setStyleSheet("color: #e0e2ec; margin-bottom: 4px;")
         outer_layout.addWidget(div)
 
         # ── scroll area ───────────────────────────────────────────────

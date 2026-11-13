@@ -327,7 +327,6 @@ class PropertiesPanel(QDockWidget):
         self._name_btn.setChecked(True)
         self._name_btn.setObjectName("tab_btn_left")
         self._value_btn.setObjectName("tab_btn_right")
-        self._apply_tab_styles()
 
         self._name_btn.clicked.connect(lambda: self._set_label_mode("name"))
         self._value_btn.clicked.connect(lambda: self._set_label_mode("value"))
@@ -350,45 +349,6 @@ class PropertiesPanel(QDockWidget):
         # 样式由 styles.qss QTextEdit / QLineEdit[readOnly] 规则提供（R-27）
         layout.addWidget(self._definition_edit)
         return body
-
-    # ──────────────────────────────────────────────────────────────────
-    # Style helpers
-    # ──────────────────────────────────────────────────────────────────
-
-    def _apply_tab_styles(self):
-        """名称/值切换按钮的选中态样式（色值全部取自 token — R-27）。"""
-        tokens = get_tokens()
-        active_style = (
-            "QPushButton {"
-            f"  background: {tokens['accent.base']}; color: {tokens['fg.onAccent']};"
-            "  font-size: 12px; font-weight: 600;"
-            f"  border: 1px solid {tokens['accent.base']};"
-            "  padding: 0 8px;"
-            "}"
-        )
-        inactive_style = (
-            "QPushButton {"
-            f"  background: {tokens['bg.surface']}; color: {tokens['fg.secondary']};"
-            "  font-size: 12px;"
-            f"  border: 1px solid {tokens['border.subtle']};"
-            "  padding: 0 8px;"
-            "}"
-            "QPushButton:hover {"
-            f"  background: {tokens['bg.hover']};"
-            "}"
-        )
-        left_radius = "border-top-left-radius: 6px; border-bottom-left-radius: 6px;"
-        right_radius = "border-top-right-radius: 6px; border-bottom-right-radius: 6px;"
-
-        name_active = self._name_btn.isChecked()
-        value_active = self._value_btn.isChecked()
-
-        self._name_btn.setStyleSheet(
-            (active_style if name_active else inactive_style) + f"QPushButton {{ {left_radius} }}"
-        )
-        self._value_btn.setStyleSheet(
-            (active_style if value_active else inactive_style) + f"QPushButton {{ {right_radius} }}"
-        )
 
     # ──────────────────────────────────────────────────────────────────
     # Internal slot helpers
@@ -420,7 +380,6 @@ class PropertiesPanel(QDockWidget):
         self._label_mode = mode
         self._name_btn.setChecked(mode == "name")
         self._value_btn.setChecked(mode == "value")
-        self._apply_tab_styles()
 
     # ──────────────────────────────────────────────────────────────────
     # Public API
