@@ -38,7 +38,7 @@ setup(
         "jupyter_server>=2.0",
         "requests>=2.31",
         "pythonnet>=3.0",
-        "markdown>=3.5",
+        "markdown>=3.11.3",
         "Pygments>=2.17",
         "jedi>=0.19",
         "networkx>=3.1",
