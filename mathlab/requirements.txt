@@ -14,7 +14,7 @@ matplotlib>=3.8
 pyqtgraph>=0.13
 
 # ── AI 集成（多提供商 LLM 接入）──────────────────────────────────────────
-openai>=1.0
+openai>=3.49.0
 PyYAML>=6.0
 markdown>=3.11.3
 Pygments>=2.17
