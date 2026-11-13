@@ -1,0 +1,24 @@
+title = "MathLab (Axiom Mathematics Panel) Gitleaks Config"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "mathlab-settings-ai-api-key"
+description = "Non-empty ai_api_key in mathlab/settings.json"
+regex = '''"ai_api_key"\s*:\s*"([^"]+)"'''
+paths = ['''mathlab/settings\.json$''']
+tags = ["key", "mathlab"]
+
+[allowlist]
+description = "Allow test fixtures, placeholders, and documentation examples"
+paths = [
+  '''mathlab/tests/.*''',
+  '''AGENTS\.md$''',
+  '''README\.md$''',
+]
+regexes = [
+  '''sk-\.\.\.''',
+  '''your[_-]?api[_-]?key''',
+  '''<your-.*?>''',
+]

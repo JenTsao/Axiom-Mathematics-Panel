@@ -7,13 +7,13 @@ on:
     paths:
       - 'mathlab/**.py'
       - 'requirements.txt'
-      - '.github/workflows/code-quality.yml'
+      - '.github/workflows/**'
   pull_request:
     branches: [main, develop]
     paths:
       - 'mathlab/**.py'
       - 'requirements.txt'
-      - '.github/workflows/code-quality.yml'
+      - '.github/workflows/**'
   workflow_dispatch:
 
 # ── 权限配置（最小权限原则）──────────────────────────────────────────────
@@ -298,13 +298,31 @@ jobs:
           if-no-files-found: ignore
 
   # ────────────────────────────────────────────────────────────────────────
-  # Job 5: 汇总报告
+  # Job 5: GitHub Actions 工作流自检 (actionlint)
+  # ────────────────────────────────────────────────────────────────────────
+  actionlint:
+    name: Workflow Lint (actionlint)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+        with:
+          egress-policy: audit
+
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Run actionlint
+        uses: raven-actions/actionlint@980c24ed9186b7cd9b4eb35d1e5b7cf86e33efad # v2.0.0
+
+  # ────────────────────────────────────────────────────────────────────────
+  # Job 6: 汇总报告
   # ────────────────────────────────────────────────────────────────────────
   summary:
     name: Quality Summary
     runs-on: ubuntu-24.04
     timeout-minutes: 5
-    needs: [static-lint, pylint, mypy, safety]
+    needs: [static-lint, pylint, mypy, safety, actionlint]
     if: always()
     steps:
       - name: Generate summary
@@ -313,6 +331,7 @@ jobs:
           PYLINT_RESULT: ${{ needs.pylint.result }}
           MYPY_RESULT: ${{ needs.mypy.result }}
           SAFETY_RESULT: ${{ needs.safety.result }}
+          ACTIONLINT_RESULT: ${{ needs.actionlint.result }}
         run: |
           {
             echo "## 📊 代码质量检查报告"
@@ -323,6 +342,7 @@ jobs:
             echo "| Pylint 代码分析 | ${PYLINT_RESULT} |"
             echo "| MyPy 类型检查 | ${MYPY_RESULT} |"
             echo "| Safety 依赖检查（仅 push） | ${SAFETY_RESULT} |"
+            echo "| Workflow Lint (actionlint) | ${ACTIONLINT_RESULT} |"
             echo ""
             echo "状态说明: ✅ success = 通过, ❌ failure = 失败, ⏭️ skipped = 跳过"
           } >> "$GITHUB_STEP_SUMMARY"

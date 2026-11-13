@@ -1,0 +1,21 @@
+repos:
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.21.2
+    hooks:
+      - id: gitleaks
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-json
+      - id: check-yaml
+      - id: check-merge-conflict
+
+  - repo: local
+    hooks:
+      - id: check-settings-api-key-empty
+        name: Ensure mathlab/settings.json ai_api_key is empty
+        entry: python -c "import json, sys; d=json.load(open('mathlab/settings.json', encoding='utf-8')); sys.exit(1 if d.get('ai_api_key') else 0)"
+        language: system
+        files: ^mathlab/settings\.json$
+        pass_filenames: false
