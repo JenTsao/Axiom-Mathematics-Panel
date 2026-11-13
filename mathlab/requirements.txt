@@ -23,7 +23,7 @@ Pygments>=2.17
 # PySide6-WebEngine 已内置于 PySide6>=6.6 的 Addons 包中，无需单独安装
 jupyterlab>=4.0
 jupyter_client>=8.0
-ipykernel>=6.0
+ipykernel>=7.4.0
 jupyter_server>=2.0
 requests>=2.31
 
