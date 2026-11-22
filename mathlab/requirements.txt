@@ -28,4 +28,4 @@ jupyter_server>=2.0
 requests>=2.31
 
 # ── C# 加速内核（pythonnet 桥接；缺失时相关模块自动降级）───────────────────
-pythonnet>=3.0
+pythonnet>=3.2.1
