@@ -86,7 +86,7 @@ class PreferencesDialog(QDialog):
     canvas_white_paper_changed = Signal(bool)
     undo_enabled_changed = Signal(bool)
 
-    def __init__(self, parent=None, initial_settings: dict | None = None):
+    def __init__(self, parent=None, initial_settings: dict | None = None, initial_tab: int = 0):
         super().__init__(parent)
         # 命名空间（§4.2）：styles.qss §4 全部以 QDialog#preferencesDialog 前缀生效
         self.setObjectName("preferencesDialog")
@@ -99,6 +99,8 @@ class PreferencesDialog(QDialog):
         self.settings: dict = {**self._default_settings(), **(initial_settings or load_settings())}
 
         self._build_ui()
+        if 0 <= initial_tab < self.tabs.count():
+            self.tabs.setCurrentIndex(initial_tab)
         self._load_settings()
         self._connect_change_signals()
 

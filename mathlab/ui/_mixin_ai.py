@@ -15,7 +15,10 @@ from mathlab.core.async_workers import (
     TaskManager,
 )
 from mathlab.core.prompt_manager import prompt_manager
+from mathlab.utils.i18n_manager import t
 from mathlab.utils.logger import get_logger
+from mathlab.utils.theme_manager import get_current_theme
+from mathlab.utils.theme_tokens import get_tokens
 
 logger = get_logger(__name__)
 
@@ -178,7 +181,8 @@ class AIMixin:
             self.omni_bar.input_field.clear()
 
         if hasattr(self.console, "output_area"):
-            self.console.output_area.append(f"<hr><b style='color:#64B5F6'>👤 用户:</b> {user_prompt}<br>")
+            accent = get_tokens(get_current_theme())["accent.hover"]
+            self.console.output_area.append(f"<hr><b style='color:{accent}'>👤 用户:</b> {user_prompt}<br>")
 
         # 唤醒 AI 专属光标，飞入视野
         from PySide6.QtCore import QPointF
@@ -213,10 +217,14 @@ class AIMixin:
         """Agent 彻底跑完任务 (包含自愈和 RAG 沉淀) 后的 UI 善后"""
         if success:
             self.console.append_agent_observation("🎉 任务完美执行并渲染！", is_error=False)
+            if hasattr(self, "show_toast"):
+                self.show_toast(t("toast.ai_task_done"), level="success")
             # 触发底层执行，刷新所有的画布和 C# 引擎联动
             self.ai_tools_panel.code_editor.backend.execute_code(final_content)
         else:
             self.console.append_agent_observation("⚠️ 尝试多次失败，请手动干预。", is_error=True)
+            if hasattr(self, "show_toast"):
+                self.show_toast(t("toast.ai_task_failed").format(str(final_content)[:80]), level="error")
 
         # 持久化保存学生认知画像（自适应学习）
         if hasattr(self, "student_model_manager"):
@@ -392,8 +400,9 @@ class AIMixin:
         if params is None:
             params = {}
 
-        self.ai_tools_panel.set_loading_state(True)
-        self.statusBar().showMessage(f"正在训练 {model_type} 模型，请稍候...")
+        loading_msg = t("toast.ai_fit_running").format(model_type)
+        self.ai_tools_panel.set_loading_state(True, loading_msg)
+        self.statusBar().showMessage(loading_msg)
 
         self.fit_worker = AIFitWorker(self.ai_manager, points, model_type, **params)
         self.active_workers.add(self.fit_worker)
@@ -403,14 +412,24 @@ class AIMixin:
 
     def on_ai_worker_finished(self, result: dict, worker):
         # 在回收 worker 之前完成所有 worker 类型判断，避免竞态
+        self.ai_tools_panel.set_loading_state(False)
         if isinstance(worker, AIFitWorker):
-            self.statusBar().showMessage("模型训练完成", 3000)
+            msg = t("toast.ai_fit_done")
+            self.statusBar().showMessage(msg, 3000)
+            if hasattr(self, "show_toast"):
+                self.show_toast(msg, level="success")
             self.ai_tools_panel.set_fit_result(result)
         elif isinstance(worker, AIClusterWorker):
-            self.statusBar().showMessage("聚类分析完成", 3000)
+            msg = t("toast.ai_cluster_done")
+            self.statusBar().showMessage(msg, 3000)
+            if hasattr(self, "show_toast"):
+                self.show_toast(msg, level="success")
             self.ai_tools_panel.set_cluster_result(result)
         elif isinstance(worker, AIRecognizeWorker):
-            self.statusBar().showMessage("识别完成", 3000)
+            msg = t("toast.ai_recognize_done")
+            self.statusBar().showMessage(msg, 3000)
+            if hasattr(self, "show_toast"):
+                self.show_toast(msg, level="success")
             self.ai_tools_panel.set_recognition_result(result)
 
         self._recycle_worker(worker)
@@ -422,8 +441,9 @@ class AIMixin:
         if self.cluster_worker is not None and self.cluster_worker in self.active_workers:
             return
 
-        self.ai_tools_panel.set_loading_state(True)
-        self.statusBar().showMessage(f"正在进行 {method} 聚类分析...")
+        loading_msg = t("toast.ai_cluster_running").format(method)
+        self.ai_tools_panel.set_loading_state(True, loading_msg)
+        self.statusBar().showMessage(loading_msg)
 
         self.cluster_worker = AIClusterWorker(self.ai_manager, points, method, params)
         self.active_workers.add(self.cluster_worker)
@@ -437,8 +457,9 @@ class AIMixin:
         if self.recognize_worker is not None and self.recognize_worker in self.active_workers:
             return
 
-        self.ai_tools_panel.set_loading_state(True)
-        self.statusBar().showMessage("正在识别数字...")
+        loading_msg = t("toast.ai_recognize_running")
+        self.ai_tools_panel.set_loading_state(True, loading_msg)
+        self.statusBar().showMessage(loading_msg)
 
         self.recognize_worker = AIRecognizeWorker(self.ai_manager, image_data)
         self.active_workers.add(self.recognize_worker)
@@ -455,14 +476,18 @@ class AIMixin:
             self._recycle_worker(worker)
 
         self.ai_tools_panel.set_loading_state(False)
-        self.statusBar().showMessage(f"后台运算出错: {error_msg}", 5000)
+        msg = t("toast.ai_worker_error").format(error_msg)
+        self.statusBar().showMessage(msg, 5000)
+        if hasattr(self, "show_toast"):
+            self.show_toast(msg, level="error", duration_ms=5000)
 
     def on_ai_generate_points(self, n: int) -> None:
         if self.generate_points_worker is not None and self.generate_points_worker in self.active_workers:
             return
 
-        self.ai_tools_panel.set_loading_state(True)
-        self.statusBar().showMessage("正在生成随机点...")
+        loading_msg = t("toast.ai_points_running")
+        self.ai_tools_panel.set_loading_state(True, loading_msg)
+        self.statusBar().showMessage(loading_msg)
 
         self.generate_points_worker = AIGeneratePointsWorker(
             self.ai_manager, n, x_range=(-200, 200), y_range=(-200, 200)
@@ -480,7 +505,10 @@ class AIMixin:
         self._recycle_worker(worker)
 
         self.ai_tools_panel.set_loading_state(False)
-        self.statusBar().showMessage("随机点生成完成", 3000)
+        msg = t("toast.ai_points_done")
+        self.statusBar().showMessage(msg, 3000)
+        if hasattr(self, "show_toast"):
+            self.show_toast(msg, level="success")
 
         if result["success"]:
             self.ai_tools_panel.set_scatter_points(result["points"])

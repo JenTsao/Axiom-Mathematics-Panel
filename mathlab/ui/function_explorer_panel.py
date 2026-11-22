@@ -66,8 +66,8 @@ class ParameterSlider(QWidget):
         self.name_label = QLabel(f"{param_name} =")
         self.name_label.setFont(QFont("Consolas", 10))
         self.value_label = QLabel(f"{default_val:.2f}")
+        self.value_label.setObjectName("feParamValue")
         self.value_label.setFont(QFont("Consolas", 10, QFont.Bold))
-        self.value_label.setStyleSheet("color: #004ac6;")
         header_layout.addWidget(self.name_label)
         header_layout.addStretch()
         header_layout.addWidget(self.value_label)
@@ -152,7 +152,7 @@ class FunctionExplorerPanel(QDockWidget):
         expr_group = QGroupBox(t("function_explorer.expression"))
         expr_layout = QVBoxLayout(expr_group)
         self.example_label = QLabel(t("function_explorer.example_explicit"))
-        self.example_label.setStyleSheet("color: #737686; font-size: 11px;")
+        self.example_label.setObjectName("feExampleLabel")
         expr_layout.addWidget(self.example_label)
         self.expr_input = QLineEdit()
         self.expr_input.setPlaceholderText(t("function_explorer.enter_expression"))
@@ -160,9 +160,7 @@ class FunctionExplorerPanel(QDockWidget):
         self.expr_input.returnPressed.connect(self.on_plot_function)
         expr_layout.addWidget(self.expr_input)
         self.plot_btn = QPushButton(t("function_explorer.plot"))
-        self.plot_btn.setStyleSheet(
-            "QPushButton { background: #004ac6; color: white; border: none; padding: 8px; border-radius: 4px; font-weight: 600; } QPushButton:hover { background: #2563eb; }"
-        )
+        self.plot_btn.setObjectName("fePlotBtn")
         self.plot_btn.clicked.connect(self.on_plot_function)
         expr_layout.addWidget(self.plot_btn)
         main_layout.addWidget(expr_group)
@@ -197,10 +195,8 @@ class FunctionExplorerPanel(QDockWidget):
             self.shift_up_btn,
             self.shift_down_btn,
         ]:
+            btn.setObjectName("feTransformBtn")
             btn.setFixedSize(80, 32)
-            btn.setStyleSheet(
-                "QPushButton { background: #eff4ff; border: 1px solid #d3e4fe; border-radius: 4px; font-size: 11px; } QPushButton:hover { background: #d3e4fe; }"
-            )
 
         trans_row1.addWidget(self.shift_left_btn)
         trans_row1.addWidget(self.shift_right_btn)
@@ -221,10 +217,8 @@ class FunctionExplorerPanel(QDockWidget):
             self.reflect_x_btn,
             self.reflect_y_btn,
         ]:
+            btn.setObjectName("feTransformBtn")
             btn.setFixedSize(80, 32)
-            btn.setStyleSheet(
-                "QPushButton { background: #eff4ff; border: 1px solid #d3e4fe; border-radius: 4px; font-size: 11px; } QPushButton:hover { background: #d3e4fe; }"
-            )
 
         trans_row2.addWidget(self.scale_x_btn)
         trans_row2.addWidget(self.scale_y_btn)
@@ -270,13 +264,13 @@ class FunctionExplorerPanel(QDockWidget):
 
         int_row2 = QHBoxLayout()
         self.calc_int_btn = QPushButton("计算面积并填充阴影")
-        self.calc_int_btn.setStyleSheet("background-color: #e0f2fe; color: #0284c7; border-radius: 4px; padding: 4px;")
+        self.calc_int_btn.setObjectName("feCalcIntBtn")
         self.calc_int_btn.clicked.connect(self._on_calculate_integral)
         int_row2.addWidget(self.calc_int_btn)
 
         self.int_result_label = QLabel("面积 = -")
+        self.int_result_label.setObjectName("feIntResultLabel")
         self.int_result_label.setFont(QFont("Consolas", 10, QFont.Bold))
-        self.int_result_label.setStyleSheet("color: #d97706;")
         int_row2.addWidget(self.int_result_label)
         calc_layout.addLayout(int_row2)
 
@@ -300,15 +294,13 @@ class FunctionExplorerPanel(QDockWidget):
 
         deriv_row2 = QHBoxLayout()
         self.calc_deriv_btn = QPushButton("计算切线并绘制")
-        self.calc_deriv_btn.setStyleSheet(
-            "background-color: #fce7f3; color: #be185d; border-radius: 4px; padding: 4px;"
-        )
+        self.calc_deriv_btn.setObjectName("feCalcDerivBtn")
         self.calc_deriv_btn.clicked.connect(self._on_calculate_tangent)
         deriv_row2.addWidget(self.calc_deriv_btn)
 
         self.deriv_result_label = QLabel("斜率 k = -")
+        self.deriv_result_label.setObjectName("feDerivResultLabel")
         self.deriv_result_label.setFont(QFont("Consolas", 10, QFont.Bold))
-        self.deriv_result_label.setStyleSheet("color: #be185d;")
         deriv_row2.addWidget(self.deriv_result_label)
         calc_layout.addLayout(deriv_row2)
 

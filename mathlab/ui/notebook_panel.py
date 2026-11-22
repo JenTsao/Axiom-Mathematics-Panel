@@ -23,6 +23,8 @@ from mathlab.ui.code_editor import MonacoCodeEditor
 from mathlab.ui.markdown_cell import MarkdownCellWidget
 from mathlab.utils.i18n_manager import t
 from mathlab.utils.markdown_service import MarkdownService
+from mathlab.utils.theme_manager import get_current_theme
+from mathlab.utils.theme_tokens import get_tokens
 
 
 class VSCodeStyleCellWidget(QFrame):
@@ -36,32 +38,15 @@ class VSCodeStyleCellWidget(QFrame):
         self.cell_id = cell_id
         self.cell_type = cell_type
 
-        # UI Styling
+        # UI Styling 由 styles.qss `VSCodeStyleCellWidget` 提供（三主题自适应）
         self.setFrameShape(QFrame.StyledPanel)
-        self.setStyleSheet("""
-            VSCodeStyleCellWidget {
-                background-color: #252526;
-                border: 1px solid #3c3c3c;
-                border-radius: 4px;
-                margin-bottom: 10px;
-            }
-            QPushButton {
-                background-color: #0e639c;
-                color: white;
-                border: none;
-                padding: 4px 10px;
-                border-radius: 2px;
-            }
-            QPushButton:hover {
-                background-color: #1177bb;
-            }
-        """)
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
 
         self.init_ui(content, language)
 
     def init_ui(self, initial_content, initial_language):
         self.main_layout = QVBoxLayout(self)
-        self.main_layout.setContentsMargins(5, 5, 5, 5)
+        self.main_layout.setContentsMargins(8, 8, 8, 8)
 
         # Toolbar
         self.toolbar_container = QWidget()
@@ -69,11 +54,12 @@ class VSCodeStyleCellWidget(QFrame):
         toolbar_layout.setContentsMargins(0, 0, 0, 0)
 
         type_label = QLabel(f"[{self.cell_type.upper()}]")
-        type_label.setStyleSheet("color: #cccccc;")
+        type_label.setObjectName("nbCellTypeLabel")
         toolbar_layout.addWidget(type_label)
 
         if self.cell_type == "code":
             self.lang_selector = QComboBox()
+            self.lang_selector.setObjectName("nbLangSelector")
             self.lang_selector.addItems(["MathLab", "Python", "C# (C Sharp)"])
             if initial_language == "csharp":
                 self.lang_selector.setCurrentText("C# (C Sharp)")
@@ -81,13 +67,13 @@ class VSCodeStyleCellWidget(QFrame):
                 self.lang_selector.setCurrentText("Python")
             else:
                 self.lang_selector.setCurrentText("MathLab")
-            self.lang_selector.setStyleSheet("background-color: #3c3c3c; color: white; border: none; padding: 2px;")
             self.lang_selector.currentTextChanged.connect(self.on_language_changed)
             toolbar_layout.addWidget(self.lang_selector)
 
         toolbar_layout.addStretch()
 
         self.run_btn = QPushButton(t("notebook.run"))
+        self.run_btn.setObjectName("nbRunBtn")
         self.run_btn.clicked.connect(self.on_run_clicked)
         toolbar_layout.addWidget(self.run_btn)
 
@@ -100,7 +86,7 @@ class VSCodeStyleCellWidget(QFrame):
             self.input_editor.code_synced.connect(self.code_synced.emit)
         else:
             self.input_editor = QTextEdit(initial_content)
-            self.input_editor.setStyleSheet("background-color: #1e1e1e; color: #d4d4d4; border: 1px solid #3c3c3c;")
+            self.input_editor.setObjectName("nbCellEditor")
             self.input_editor.setFixedHeight(100)
             self.input_editor.textChanged.connect(lambda: self.code_synced.emit(self.input_editor.toPlainText()))
 
@@ -112,9 +98,7 @@ class VSCodeStyleCellWidget(QFrame):
 
         # Output browser
         self.output_browser = QTextBrowser()
-        self.output_browser.setStyleSheet(
-            "background-color: #1e1e1e; color: #d4d4d4; border: none; font-family: Consolas;"
-        )
+        self.output_browser.setObjectName("nbCellOutput")
         self.output_browser.hide()
 
         self.main_layout.addWidget(self.toolbar_container)
@@ -200,17 +184,17 @@ class NotebookPanel(QWidget):
 
         # ── 1. 顶部全局工具栏 ──
         self.toolbar = QFrame()
+        self.toolbar.setObjectName("nbToolbar")
         self.toolbar.setFixedHeight(40)
-        self.toolbar.setStyleSheet("background-color: #252526; border-bottom: 1px solid #333;")
         toolbar_layout = QHBoxLayout(self.toolbar)
         toolbar_layout.setContentsMargins(10, 0, 10, 0)
 
-        self.btn_save = self._create_toolbar_btn(f"💾 {t('notebook.save') or 'Save'}", "#d7ba7d")
-        self.btn_load = self._create_toolbar_btn(f"📂 {t('notebook.open') or 'Open'}", "#d7ba7d")
-        self.btn_add_code = self._create_toolbar_btn(t("notebook.add_code"), "#007acc")
-        self.btn_add_markdown = self._create_toolbar_btn(t("notebook.add_markdown"), "#608b4e")
-        self.btn_run_all = self._create_toolbar_btn(t("notebook.run_all"), "#c586c0")
-        self.btn_clear_all = self._create_toolbar_btn(t("notebook.clear_all"), "#858585")
+        self.btn_save = self._create_toolbar_btn(f"💾 {t('notebook.save') or 'Save'}")
+        self.btn_load = self._create_toolbar_btn(f"📂 {t('notebook.open') or 'Open'}")
+        self.btn_add_code = self._create_toolbar_btn(t("notebook.add_code"))
+        self.btn_add_markdown = self._create_toolbar_btn(t("notebook.add_markdown"))
+        self.btn_run_all = self._create_toolbar_btn(t("notebook.run_all"))
+        self.btn_clear_all = self._create_toolbar_btn(t("notebook.clear_all"))
 
         toolbar_layout.addWidget(self.btn_load)
         toolbar_layout.addWidget(self.btn_save)
@@ -229,11 +213,11 @@ class NotebookPanel(QWidget):
 
         # ── 2. 可滚动的画布区域 ──
         self.scroll_area = QScrollArea()
+        self.scroll_area.setObjectName("nbScrollArea")
         self.scroll_area.setWidgetResizable(True)
-        self.scroll_area.setStyleSheet("QScrollArea { border: none; background-color: #1e1e1e; }")
 
         self.canvas_widget = QWidget()
-        self.canvas_widget.setStyleSheet("background-color: #1e1e1e;")
+        self.canvas_widget.setObjectName("nbCanvas")
         self.canvas_layout = QVBoxLayout(self.canvas_widget)
         self.canvas_layout.setContentsMargins(40, 20, 40, 40)
         self.canvas_layout.setSpacing(15)
@@ -244,14 +228,9 @@ class NotebookPanel(QWidget):
         self.main_layout.addWidget(self.toolbar)
         self.main_layout.addWidget(self.scroll_area)
 
-    def _create_toolbar_btn(self, text, hover_color):
+    def _create_toolbar_btn(self, text, hover_color=None):
         btn = QPushButton(text)
-        btn.setStyleSheet(f"""
-            QPushButton {{
-                background-color: transparent; color: #cccccc; border: none; padding: 6px 12px; font-weight: bold;
-            }}
-            QPushButton:hover {{ background-color: #333333; color: {hover_color}; border-radius: 4px; }}
-        """)
+        btn.setObjectName("nbToolbarBtn")
         btn.setCursor(Qt.PointingHandCursor)
         return btn
 
@@ -447,10 +426,11 @@ class NotebookPanel(QWidget):
         # 获取 MarkdownService 单例
         md_svc = MarkdownService.get_instance()
 
+        tokens = get_tokens(get_current_theme())
         html_output = ""
         for out in backend_cell.outputs:
             if out["type"] == "error":
-                html_output += f"<div style='color: #f14c4c; padding: 5px;'><b>错误:</b> {out['data']}</div>"
+                html_output += f"<div style='color: {tokens['danger']}; padding: 5px;'><b>错误:</b> {out['data']}</div>"
             elif out["type"] == "result":
                 html_output += self._format_data_to_html(out["data"])
             elif out["type"] == "markdown":
@@ -461,14 +441,15 @@ class NotebookPanel(QWidget):
                 )
 
         exec_count = backend_cell.execution_count or "*"
-        prefix = f"<div style='color: #569cd6; font-size: 10px; margin-bottom: 4px;'>Out [{exec_count}]:</div>"
+        prefix = f"<div style='color: {tokens['accent.base']}; font-size: 10px; margin-bottom: 4px;'>Out [{exec_count}]:</div>"
 
         ui_cell.set_output(prefix + html_output)
         ui_cell.output_browser.show()
 
     def _format_data_to_html(self, result) -> str:
+        tokens = get_tokens(get_current_theme())
         if isinstance(result, np.ndarray):
-            return f"<span style='color: #4EC9B0;'>[NumPy Array Shape: {result.shape}]</span><br>"
+            return f"<span style='color: {tokens['obj.circle']};'>[NumPy Array Shape: {result.shape}]</span><br>"
         elif isinstance(result, dict):
-            return "<span style='color: #9cdcfe;'>[Dictionary Result]</span><br>"
-        return f"<span style='color: #b5cea8;'>{result}</span><br>"
+            return f"<span style='color: {tokens['obj.function']};'>[Dictionary Result]</span><br>"
+        return f"<span style='color: {tokens['success']};'>{result}</span><br>"

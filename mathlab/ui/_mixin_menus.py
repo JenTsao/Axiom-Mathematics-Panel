@@ -16,10 +16,12 @@ from PySide6.QtWidgets import (
 )
 
 from mathlab.utils.i18n_manager import t
-from mathlab.utils.theme_manager import THEMES, get_current_theme
+from mathlab.utils.theme_manager import get_current_theme
+from mathlab.utils.theme_tokens import get_tokens
 
 from .command_bar import CommandBar
 from .fractal_gpu_panel import FractalGPUExplorer
+from .shortcut_registry import format_shortcut_hint
 from .signal_lab_panel import SignalLabPanel
 
 
@@ -176,11 +178,11 @@ class MenusMixin:
 
         self.delete_action.triggered.connect(self.on_delete_selected)
 
-        # ── 撤销/重做接 UndoStack（R-10，§6.4）────────────────────────────
+        # ── 撤销/重做接 UndoStack（R-10，§6.4；附非模态 Toast 反馈 R-16） ──
         undo_stack = getattr(self, "undo_stack", None)
         if undo_stack is not None and undo_stack.enabled:
-            self.undo_action.triggered.connect(undo_stack.undo)
-            self.redo_action.triggered.connect(undo_stack.redo)
+            self.undo_action.triggered.connect(self._on_undo_triggered)
+            self.redo_action.triggered.connect(self._on_redo_triggered)
             # 可用性信号驱动灰置（保留用户可发现性，而非隐藏）
             undo_stack.undo_available.connect(self.undo_action.setEnabled)
             undo_stack.redo_available.connect(self.redo_action.setEnabled)
@@ -218,6 +220,18 @@ class MenusMixin:
 
         self.about_action.triggered.connect(self.show_about)
 
+    def _on_undo_triggered(self) -> None:
+        undo_stack = getattr(self, "undo_stack", None)
+        if undo_stack is not None and undo_stack.undo():
+            if hasattr(self, "show_toast"):
+                self.show_toast(t("toast.undone"), level="info", duration_ms=2200)
+
+    def _on_redo_triggered(self) -> None:
+        undo_stack = getattr(self, "undo_stack", None)
+        if undo_stack is not None and undo_stack.redo():
+            if hasattr(self, "show_toast"):
+                self.show_toast(t("toast.redone"), level="info", duration_ms=2200)
+
     def open_signal_lab(self):
         self.signal_lab = SignalLabPanel(self)
         self.signal_lab.show()
@@ -232,11 +246,11 @@ class MenusMixin:
         self.toolbar.setIconSize(QSize(20, 20))
         self.toolbar.setToolButtonStyle(Qt.ToolButtonIconOnly)
 
-        # 6 个工具 action 补 tooltip + accessibleName（R-28 无障碍基线）
+        # 6 个工具 action 补 tooltip + accessibleName（R-19 / R-28 无障碍基线）
         self.select_action = QAction(t("main_window.select"), self)
         self.select_action.setCheckable(True)
         self.select_action.setChecked(True)
-        self.select_action.setToolTip(t("main_window.select"))
+        self.select_action.setToolTip(f"{t('main_window.select')} (Esc)")
 
         self.point_action = QAction(t("main_window.point"), self)
         self.point_action.setCheckable(True)
@@ -267,12 +281,11 @@ class MenusMixin:
             self.pan_action,
         ]
 
-        self.toolbar.addAction(self.select_action)
-        self.toolbar.addAction(self.point_action)
-        self.toolbar.addAction(self.segment_action)
-        self.toolbar.addAction(self.circle_action)
-        self.toolbar.addAction(self.polygon_action)
-        self.toolbar.addAction(self.pan_action)
+        for action in self.tool_actions:
+            self.toolbar.addAction(action)
+            btn = self.toolbar.widgetForAction(action)
+            if btn is not None:
+                btn.setAccessibleName(action.text())
         self.toolbar.addSeparator()
 
         self.command_bar = CommandBar()
@@ -281,17 +294,26 @@ class MenusMixin:
         self.toolbar.addSeparator()
 
         self._zoom_in_action = QAction(t("main_window.zoom_in"), self)
+        self._zoom_in_action.setToolTip(f"{t('main_window.zoom_in')} ({format_shortcut_hint('Ctrl++')})")
         self.toolbar.addAction(self._zoom_in_action)
         self._zoom_in_action.triggered.connect(self.on_zoom_in)
+        zoom_in_btn = self.toolbar.widgetForAction(self._zoom_in_action)
+        if zoom_in_btn is not None:
+            zoom_in_btn.setAccessibleName(t("main_window.zoom_in"))
 
         self._zoom_out_action = QAction(t("main_window.zoom_out"), self)
+        self._zoom_out_action.setToolTip(f"{t('main_window.zoom_out')} ({format_shortcut_hint('Ctrl+-')})")
         self.toolbar.addAction(self._zoom_out_action)
         self._zoom_out_action.triggered.connect(self.on_zoom_out)
+        zoom_out_btn = self.toolbar.widgetForAction(self._zoom_out_action)
+        if zoom_out_btn is not None:
+            zoom_out_btn.setAccessibleName(t("main_window.zoom_out"))
 
         self.toolbar.addSeparator()
 
         self.lang_btn = QPushButton("EN/ZH")
         self.lang_btn.setToolTip(t("main_window.language"))
+        self.lang_btn.setAccessibleName(t("main_window.language"))
         self.lang_btn.setObjectName("lang_btn")
         self.lang_btn.setFixedSize(64, 28)
         # 样式由 styles.qss #lang_btn 规则提供（R-20：深色下无浅色贴片）
@@ -300,7 +322,7 @@ class MenusMixin:
 
         self.settings_btn = QPushButton()
         self.settings_btn.setObjectName("settings_btn")
-        self.settings_btn.setToolTip(t("main_window.preferences"))
+        self.settings_btn.setToolTip(f"{t('main_window.preferences')} ({format_shortcut_hint('Ctrl+,')})")
         self.settings_btn.setAccessibleName(t("main_window.preferences"))
         self.settings_btn.setFixedSize(28, 28)
         self.settings_btn.setIconSize(QSize(18, 18))
@@ -360,7 +382,7 @@ class MenusMixin:
             with open(icon_path, "r", encoding="utf-8") as f:
                 svg_content = f.read()
 
-            foreground = THEMES.get(theme_name, {}).get("foreground", "#434655")
+            foreground = get_tokens(theme_name)["fg.primary"]
             svg_content = svg_content.replace("currentColor", foreground)
 
             from PySide6.QtGui import QPixmap

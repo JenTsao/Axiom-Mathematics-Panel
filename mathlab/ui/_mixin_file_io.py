@@ -64,7 +64,9 @@ class FileIOMixin:
                     self._add_object(obj_data)
 
             self.current_project = file_path
-            self.statusBar().showMessage(t("status_bar.opened", file_path))
+            self.statusBar().showMessage(t("status_bar.opened", file_path), 4000)
+            if hasattr(self, "show_toast"):
+                self.show_toast(t("toast.project_opened"), level="success")
         except Exception as e:
             QMessageBox.warning(
                 self,
@@ -104,7 +106,9 @@ class FileIOMixin:
                 data = build_project(objects=self._objects_data)
             write_project_file(file_path, data)
             self.current_project = file_path
-            self.statusBar().showMessage(t("status_bar.saved", file_path))
+            self.statusBar().showMessage(t("status_bar.saved", file_path), 4000)
+            if hasattr(self, "show_toast"):
+                self.show_toast(t("toast.project_saved"), level="success")
         except Exception as e:
             QMessageBox.warning(
                 self,
@@ -121,7 +125,9 @@ class FileIOMixin:
         try:
             pixmap = self.central_widget.grab()
             pixmap.save(file_path)
-            self.statusBar().showMessage(t("status_bar.exported", file_path))
+            self.statusBar().showMessage(t("status_bar.exported", file_path), 4000)
+            if hasattr(self, "show_toast"):
+                self.show_toast(t("toast.exported"), level="success")
         except Exception as e:
             QMessageBox.warning(self, t("dialogs.error"), t("dialogs.failed_to_export", str(e)))
 
@@ -147,7 +153,9 @@ class FileIOMixin:
             self.central_widget.scene().render(painter)
             painter.end()
 
-            self.statusBar().showMessage(t("status_bar.exported_svg", file_path))
+            self.statusBar().showMessage(t("status_bar.exported_svg", file_path), 4000)
+            if hasattr(self, "show_toast"):
+                self.show_toast(t("toast.exported"), level="success")
         except Exception as e:
             QMessageBox.warning(self, t("dialogs.error"), t("dialogs.failed_to_export", str(e)))
 
@@ -161,6 +169,8 @@ class FileIOMixin:
             latex_content = export_canvas_to_latex(list(self._objects_data.values()))
             with open(file_path, "w", encoding="utf-8") as f:
                 f.write(latex_content)
-            self.statusBar().showMessage(t("status_bar.exported_latex", file_path))
+            self.statusBar().showMessage(t("status_bar.exported_latex", file_path), 4000)
+            if hasattr(self, "show_toast"):
+                self.show_toast(t("toast.exported"), level="success")
         except Exception as e:
             QMessageBox.warning(self, t("dialogs.error"), t("dialogs.failed_to_export", str(e)))

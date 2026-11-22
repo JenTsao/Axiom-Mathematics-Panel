@@ -164,13 +164,19 @@ class UISetupMixin:
         # ── 命令面板（悬浮层，必须在 setup_docks 结尾创建） ───────────────────────
         self.cmd_palette = CommandPalette(self.cmd_manager, self)
 
-        # Ctrl+Shift+P 唤醒命令面板
-        palette_shortcut = QShortcut(QKeySequence("Ctrl+Shift+P"), self)
-        palette_shortcut.activated.connect(self._show_command_palette)
-
-        # Ctrl+P 备用快捷键
-        palette_shortcut2 = QShortcut(QKeySequence("Ctrl+P"), self)
-        palette_shortcut2.activated.connect(self._show_command_palette)
+        # R-18：统一经 ShortcutRegistry 注册 Ctrl+Shift+P（带 WebEngine 焦点保护），
+        # 释放 Ctrl+P 给标准打印/嵌入式页面，避免双绑与劫持
+        registry = getattr(self, "shortcut_registry", None)
+        if registry is not None:
+            registry.register(
+                "command_palette.show",
+                "Ctrl+Shift+P",
+                self._show_command_palette,
+                description="Show Command Palette",
+            )
+        else:
+            palette_shortcut = QShortcut(QKeySequence("Ctrl+Shift+P"), self)
+            palette_shortcut.activated.connect(self._show_command_palette)
 
         # ── ✨ 信号接线：数学控制台 plot() 命令 → ECharts 渲染 ────────────────
         # math_console.bridge.signals 是 BridgeSignals(QObject)，
@@ -189,6 +195,18 @@ class UISetupMixin:
         self.notebook.ui_cells.clear()
         # add_new_cell 接收 CellType 枚举（此前误传 NotebookCell 实例）
         self.notebook.add_new_cell(CellType.CODE)
+
+    def show_toast(self, message: str, level: str = "info", duration_ms: int = 3200) -> None:
+        """在主窗口右下角展示非模态 Toast 通知（R-16 / UI-14）。"""
+        if not message:
+            return
+        mgr = getattr(self, "toast_manager", None)
+        if mgr is None:
+            from .toast import ToastManager
+
+            mgr = ToastManager(self)
+            self.toast_manager = mgr
+        mgr.show_toast(message, level=level, duration_ms=duration_ms)
 
     def _toggle_widget(self, widget, visible: bool, raise_first: bool = False) -> None:
         """面板显隐 + 淡入淡出的统一实现（供各 toggle_* 包装调用）。

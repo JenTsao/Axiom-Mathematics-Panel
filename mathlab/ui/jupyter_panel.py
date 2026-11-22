@@ -50,73 +50,43 @@ except ImportError:
     _WEBENGINE_AVAILABLE = False
 
 
+from mathlab.utils.theme_manager import get_current_theme
+from mathlab.utils.theme_tokens import get_tokens
+
 # ── 加载占位卡片 ─────────────────────────────────────────────────────────────
 
 
 class _LoadingCard(QFrame):
-    """启动期间显示的深色渐变占位卡片"""
-
-    _STYLE = """
-        QFrame {
-            background: qlineargradient(
-                x1:0, y1:0, x2:1, y2:1,
-                stop:0 #0D1117,
-                stop:1 #161B22
-            );
-            border-radius: 12px;
-        }
-        QLabel#title {
-            color: #58A6FF;
-            font-size: 18px;
-            font-weight: 700;
-            font-family: 'Segoe UI', 'Inter', sans-serif;
-        }
-        QLabel#sub {
-            color: #8B949E;
-            font-size: 13px;
-            font-family: 'Segoe UI', 'Inter', sans-serif;
-        }
-        QPushButton#retry_btn {
-            background: #21262D;
-            color: #58A6FF;
-            border: 1px solid #30363D;
-            border-radius: 6px;
-            padding: 6px 18px;
-            font-size: 13px;
-        }
-        QPushButton#retry_btn:hover {
-            background: #30363D;
-            border-color: #58A6FF;
-        }
-    """
+    """启动期间显示的主题自适应加载占位卡片（样式由 styles.qss 提供）。"""
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.setStyleSheet(self._STYLE)
+        self.setObjectName("jupyterLoadingCard")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
 
         root = QVBoxLayout(self)
         root.setAlignment(Qt.AlignCenter)
         root.setSpacing(12)
 
         self.spinner_lbl = QLabel("◌")
+        self.spinner_lbl.setObjectName("jupyterSpinner")
         self.spinner_lbl.setAlignment(Qt.AlignCenter)
-        self.spinner_lbl.setStyleSheet("color: #58A6FF; font-size: 36px;")
         root.addWidget(self.spinner_lbl)
 
         self.title_lbl = QLabel("🌌  正在启动 JupyterLab 内核…")
-        self.title_lbl.setObjectName("title")
+        self.title_lbl.setObjectName("jupyterTitle")
         self.title_lbl.setAlignment(Qt.AlignCenter)
         root.addWidget(self.title_lbl)
 
         self.sub_lbl = QLabel("本地微服务已在后台就绪，浏览器引擎正在挂载工作区")
-        self.sub_lbl.setObjectName("sub")
+        self.sub_lbl.setObjectName("jupyterSub")
         self.sub_lbl.setAlignment(Qt.AlignCenter)
         root.addWidget(self.sub_lbl)
 
         btn_row = QHBoxLayout()
         btn_row.setAlignment(Qt.AlignCenter)
         self.retry_btn = QPushButton("⟳  重新加载")
-        self.retry_btn.setObjectName("retry_btn")
+        self.retry_btn.setObjectName("jupyterRetryBtn")
         self.retry_btn.hide()
         btn_row.addWidget(self.retry_btn)
         root.addLayout(btn_row)
@@ -132,10 +102,15 @@ class _LoadingCard(QFrame):
         self._frame_idx = (self._frame_idx + 1) % len(self._frames)
         self.spinner_lbl.setText(self._frames[self._frame_idx])
 
+    def _repolish_spinner(self, is_error: bool) -> None:
+        self.spinner_lbl.setProperty("error", "true" if is_error else "false")
+        self.spinner_lbl.style().unpolish(self.spinner_lbl)
+        self.spinner_lbl.style().polish(self.spinner_lbl)
+
     def show_error(self, msg: str = "") -> None:
         self._spin_timer.stop()
         self.spinner_lbl.setText("✕")
-        self.spinner_lbl.setStyleSheet("color: #F85149; font-size: 36px;")
+        self._repolish_spinner(True)
         self.title_lbl.setText("❌  Jupyter 页面加载失败")
         self.sub_lbl.setText(msg or "请检查后台进程是否正常启动")
         self.retry_btn.show()
@@ -215,7 +190,7 @@ class JupyterPanel(QWidget):
             "（PySide6 6.x 版本需要单独安装 WebEngine）"
         )
         lbl.setAlignment(Qt.AlignCenter)
-        lbl.setStyleSheet("color: #F0B429; font-size: 14px; padding: 40px;" "background: #1A1A2E; border-radius: 8px;")
+        lbl.setObjectName("jupyterNoWebEngine")
         layout.addWidget(lbl)
 
     # ── 公开 API ─────────────────────────────────────────────────────────────
@@ -241,25 +216,26 @@ class JupyterPanel(QWidget):
 
     def _on_load_finished(self, success: bool) -> None:
         if success:
-            # 🌟 核心：注入自定义 CSS，实现完美视觉融合 🌟
-            magic_css = """
+            canvas_bg = get_tokens(get_current_theme())["bg.canvas"]
+            # 🌟 核心：注入自定义 CSS，实现与当前主题背景融合 🌟
+            magic_css = f"""
             /* 1. 隐藏顶部菜单栏 (File, Edit, View...) */
-            #jp-TopPanel { display: none !important; }
+            #jp-TopPanel {{ display: none !important; }}
 
             /* 2. 隐藏左侧文件浏览器和侧边栏 */
-            #jp-left-stack, .jp-SideBar { display: none !important; }
+            #jp-left-stack, .jp-SideBar {{ display: none !important; }}
 
             /* 3. 隐藏底部状态栏 */
-            #jp-bottom-panel { display: none !important; }
+            #jp-bottom-panel {{ display: none !important; }}
 
-            /* 4. 统一全局背景色，完美匹配 Qt 的 #1e1e1e */
-            body, .jp-LabShell, .jp-NotebookPanel {
-                background-color: #1e1e1e !important;
-            }
+            /* 4. 统一全局背景色，匹配当前主题 bg.canvas */
+            body, .jp-LabShell, .jp-NotebookPanel {{
+                background-color: {canvas_bg} !important;
+            }}
 
             /* 5. 调整 Notebook 内部的间距，让它看起来更像原生文本框 */
-            .jp-Cell { padding-left: 10px !important; padding-right: 10px !important; }
-            .jp-Toolbar { display: none !important; } /* 隐藏 Notebook 自己的小工具栏 */
+            .jp-Cell {{ padding-left: 10px !important; padding-right: 10px !important; }}
+            .jp-Toolbar {{ display: none !important; }} /* 隐藏 Notebook 自己的小工具栏 */
             """
 
             # 将 CSS 包装成一段 JavaScript 执行
@@ -360,7 +336,7 @@ class JupyterPanel(QWidget):
         """重试加载"""
         self._card.setVisible(True)
         self._card.spinner_lbl.setText("◌")
-        self._card.spinner_lbl.setStyleSheet("color: #58A6FF; font-size: 36px;")
+        self._card._repolish_spinner(False)
         self._card.title_lbl.setText("🌌  正在重新连接 JupyterLab…")
         self._card.retry_btn.hide()
         self._card._spin_timer.start(120)

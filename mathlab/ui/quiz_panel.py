@@ -22,20 +22,8 @@ class QuizCardWidget(QWidget):
         super().__init__(parent)
         self.quiz_data = quiz_data
         self.ai_manager = ai_manager
-
-        # 卡片式 UI 样式
-        self.setStyleSheet("""
-            QuizCardWidget {
-                background-color: #f8f9fa;
-                border: 1px solid #e0e0e0;
-                border-radius: 8px;
-                padding: 15px;
-            }
-            QLabel#knowledge { color: #888; font-size: 11px; font-weight: bold; }
-            QLabel#question { font-size: 14px; margin-top: 10px; margin-bottom: 10px; }
-            QPushButton#submit { background-color: #27AE60; color: white; border-radius: 4px; padding: 6px; }
-        """)
-
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        # 卡片样式由 styles.qss `QuizCardWidget` 规则提供（三主题自适应）
         self.setup_ui()
 
     def setup_ui(self):
@@ -98,12 +86,14 @@ class QuizCardWidget(QWidget):
 
         if user_answer.lower() == correct_answer.lower():
             self.submit_btn.setText("✅ 回答正确！")
-            self.submit_btn.setStyleSheet("background-color: #2ECC71; color: white;")
+            self.submit_btn.setProperty("result", "correct")
         else:
             self.submit_btn.setText("❌ 回答错误，正在呼叫 AI 讲解...")
-            self.submit_btn.setStyleSheet("background-color: #E74C3C; color: white;")
+            self.submit_btn.setProperty("result", "wrong")
             # 触发 AI 错题解析机制
             self.trigger_visual_explanation(user_answer)
+        self.submit_btn.style().unpolish(self.submit_btn)
+        self.submit_btn.style().polish(self.submit_btn)
 
     def trigger_visual_explanation(self, wrong_answer):
         """将错题上下文发送给 AI，要求它讲解并在画布上作图"""

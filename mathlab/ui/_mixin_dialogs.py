@@ -39,22 +39,30 @@ class DialogsMixin:
         self.update_toolbar_icons(theme_key)
 
     def _toggle_theme(self) -> None:
+        """在三套主题间循环切换（dark → light → sepia → dark，R-21 确保 Sepia 可达）。"""
+        order = ("dark", "light", "sepia")
         current = get_current_theme()
-        new_theme = "light" if current == "dark" else "dark"
+        idx = order.index(current) if current in order else 0
+        new_theme = order[(idx + 1) % len(order)]
         self.apply_theme(new_theme)
+        if hasattr(self, "show_toast"):
+            theme_label = THEMES.get(new_theme, {}).get("name", new_theme.title())
+            self.show_toast(t("toast.theme_switched").format(theme_label), level="info", duration_ms=2200)
 
     def reset_default_layout(self) -> None:
         """「视图 → 恢复默认布局」入口（A-05）。"""
         reset_session(self)
+        if hasattr(self, "show_toast"):
+            self.show_toast(t("toast.layout_reset"), level="info", duration_ms=2500)
 
     def show_about(self) -> None:
         QMessageBox.about(self, t("dialogs.about_title"), t("dialogs.about_text"))
 
-    def show_preferences_dialog(self) -> None:
+    def show_preferences_dialog(self, initial_tab: int = 0) -> None:
         if PreferencesDialog is None:
-            self.show_theme_dialog()
+            self._show_fallback_theme_dialog()
             return
-        dlg = PreferencesDialog(self)
+        dlg = PreferencesDialog(self, initial_tab=initial_tab)
 
         def on_theme_changed(name_or_key):
             if name_or_key in THEMES:
@@ -81,6 +89,13 @@ class DialogsMixin:
         dlg.exec()
 
     def show_theme_dialog(self) -> None:
+        """统一主题入口（R-21）：打开偏好设置并定位到「外观」页。"""
+        if PreferencesDialog is not None:
+            self.show_preferences_dialog(initial_tab=0)
+            return
+        self._show_fallback_theme_dialog()
+
+    def _show_fallback_theme_dialog(self) -> None:
         dialog = QDialog(self)
         dialog.setWindowTitle(t("dialogs.select_theme"))
         dialog.setModal(True)
@@ -220,11 +235,23 @@ class DialogsMixin:
         self.reset_layout_action.setText(t("view.reset_layout"))
 
         self.select_action.setText(t("main_window.select"))
+        self.select_action.setToolTip(f"{t('main_window.select')} (Esc)")
         self.point_action.setText(t("main_window.point"))
+        self.point_action.setToolTip(t("main_window.point"))
         self.segment_action.setText(t("main_window.segment"))
+        self.segment_action.setToolTip(t("main_window.segment"))
         self.circle_action.setText(t("main_window.circle"))
+        self.circle_action.setToolTip(t("main_window.circle"))
         self.polygon_action.setText(t("main_window.polygon"))
+        self.polygon_action.setToolTip(t("main_window.polygon"))
         self.pan_action.setText(t("main_window.pan"))
+        self.pan_action.setToolTip(t("main_window.pan"))
+        if hasattr(self, "_zoom_in_action"):
+            self._zoom_in_action.setText(t("main_window.zoom_in"))
+            self._zoom_in_action.setToolTip(f"{t('main_window.zoom_in')} (Ctrl++)")
+        if hasattr(self, "_zoom_out_action"):
+            self._zoom_out_action.setText(t("main_window.zoom_out"))
+            self._zoom_out_action.setToolTip(f"{t('main_window.zoom_out')} (Ctrl+-)")
 
         self.preferences_action.setText(t("main_window.preferences"))
         self.ai_menu.setTitle(t("menu.ai"))
@@ -234,7 +261,9 @@ class DialogsMixin:
         self.ai_train_action.setText(t("ai_tools.training_notebook"))
 
         self.lang_btn.setToolTip(t("main_window.language"))
-        self.settings_btn.setToolTip(t("main_window.preferences"))
+        self.lang_btn.setAccessibleName(t("main_window.language"))
+        self.settings_btn.setToolTip(f"{t('main_window.preferences')} (Ctrl+,)")
+        self.settings_btn.setAccessibleName(t("main_window.preferences"))
 
         # R-14/UI-10：Dock 标题不再 .upper()
         self.algebra_panel.setWindowTitle(t("algebra_panel.title"))

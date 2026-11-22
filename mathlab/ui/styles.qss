@@ -122,7 +122,7 @@ QPushButton:pressed {
     border-color: ${accent_pressed};
 }
 QPushButton:focus {
-    border: 1px solid ${border_focus};
+    border: 1.5px solid ${border_focus};
 }
 QPushButton:disabled {
     color: ${fg_muted};
@@ -133,6 +133,32 @@ QPushButton:checked {
     background-color: ${bg_selected};
     border-color: ${accent_base};
     color: ${fg_primary};
+}
+QPushButton[variant="primary"] {
+    background-color: ${accent_base};
+    border-color: ${accent_base};
+    color: ${fg_onAccent};
+    font-weight: 600;
+}
+QPushButton[variant="primary"]:hover {
+    background-color: ${accent_hover};
+    border-color: ${accent_hover};
+}
+QPushButton[variant="primary"]:pressed {
+    background-color: ${accent_pressed};
+    border-color: ${accent_pressed};
+}
+QPushButton[variant="danger"] {
+    background-color: ${danger};
+    border-color: ${danger};
+    color: ${fg_onAccent};
+    font-weight: 600;
+}
+QPushButton[variant="success"] {
+    background-color: ${success};
+    border-color: ${success};
+    color: ${fg_onAccent};
+    font-weight: 600;
 }
 QCommandLinkButton {
     background: transparent;
@@ -356,15 +382,17 @@ QToolBar::separator {
 QToolBar QToolButton {
     background: transparent;
     color: ${fg_primary};
-    border: none;
-    border-radius: 4px;
-    padding: 4px;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    padding: 4px 6px;
 }
 QToolBar QToolButton:hover {
     background-color: ${bg_hover};
+    border-color: ${border_subtle};
 }
 QToolBar QToolButton:pressed, QToolBar QToolButton:checked {
     background-color: ${bg_selected};
+    border-color: ${border_focus};
 }
 QStatusBar {
     background-color: ${bg_surface};
@@ -1038,4 +1066,497 @@ QLabel#algebraSectionTitle {
 QFrame#algebraDivider {
     color: ${border_subtle};
     margin-bottom: 4px;
+}
+
+/* ═══════ §5 Toast 通知服务（R-16 / UI-14） ═══════ */
+QFrame#toastCard {
+    background-color: ${bg_elevated};
+    border: 1px solid ${border_strong};
+    border-left: 4px solid ${accent_base};
+    border-radius: 8px;
+}
+QFrame#toastCard[toastLevel="success"] {
+    border-left-color: ${success};
+}
+QFrame#toastCard[toastLevel="warning"] {
+    border-left-color: ${warning};
+}
+QFrame#toastCard[toastLevel="error"] {
+    border-left-color: ${danger};
+}
+QLabel#toastIcon {
+    background-color: ${accent_base};
+    color: ${fg_onAccent};
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 700;
+}
+QLabel#toastIcon[toastLevel="success"] {
+    background-color: ${success};
+}
+QLabel#toastIcon[toastLevel="warning"] {
+    background-color: ${warning};
+}
+QLabel#toastIcon[toastLevel="error"] {
+    background-color: ${danger};
+}
+QLabel#toastMessage {
+    background: transparent;
+    color: ${fg_primary};
+    font-size: 12px;
+}
+QPushButton#toastCloseBtn {
+    background: transparent;
+    border: none;
+    color: ${fg_muted};
+    font-size: 12px;
+    padding: 0;
+    min-height: 20px;
+}
+QPushButton#toastCloseBtn:hover {
+    color: ${fg_primary};
+    background-color: ${bg_hover};
+    border-radius: 4px;
+}
+
+/* ═══════ §6 B3 面板组件统一令牌化（R-27 / A-03） ═══════ */
+
+/* FloatingBubble 空间讲解气泡 */
+QLabel#floatingBubbleLabel {
+    background-color: ${bg_elevated};
+    border: 1px solid ${border_strong};
+    border-radius: 8px;
+    padding: 10px 12px;
+    color: ${fg_primary};
+    font-size: 13px;
+}
+
+/* SmoothCollapsibleBox 折叠面板 */
+QToolButton#collapsibleToggle {
+    border: 1px solid ${border_subtle};
+    font-weight: 600;
+    color: ${fg_primary};
+    text-align: left;
+    padding: 8px 10px;
+    background-color: ${bg_surface};
+    border-radius: 6px;
+}
+QToolButton#collapsibleToggle:hover {
+    background-color: ${bg_hover};
+    border-color: ${border_strong};
+}
+QScrollArea#collapsibleContent {
+    border: none;
+    background: transparent;
+}
+
+/* MathSlider 交互参数滑块 */
+QLabel#mathSliderName {
+    color: ${accent_base};
+    font-weight: 600;
+    min-width: 48px;
+}
+QLabel#mathSliderValue {
+    color: ${fg_secondary};
+    font-family: "Cascadia Mono", Consolas, monospace;
+    min-width: 42px;
+}
+
+/* QuizCardWidget 交互测验卡片 */
+QuizCardWidget {
+    background-color: ${bg_surface};
+    border: 1px solid ${border_subtle};
+    border-radius: 8px;
+    padding: 12px;
+}
+QuizCardWidget QLabel#knowledge {
+    color: ${fg_muted};
+    font-size: 11px;
+    font-weight: 700;
+}
+QuizCardWidget QLabel#question {
+    color: ${fg_primary};
+    font-size: 14px;
+    margin-top: 8px;
+    margin-bottom: 8px;
+}
+QuizCardWidget QPushButton#submit {
+    background-color: ${accent_base};
+    color: ${fg_onAccent};
+    border: none;
+    border-radius: 6px;
+    padding: 6px 14px;
+    font-weight: 600;
+}
+QuizCardWidget QPushButton#submit:hover {
+    background-color: ${accent_hover};
+}
+QuizCardWidget QPushButton#submit[result="correct"] {
+    background-color: ${success};
+    color: ${fg_onAccent};
+}
+QuizCardWidget QPushButton#submit[result="wrong"] {
+    background-color: ${danger};
+    color: ${fg_onAccent};
+}
+
+/* CodeEditor & MonacoCodeEditor */
+QPushButton#aiFixBtn {
+    background-color: ${accent_base};
+    color: ${fg_onAccent};
+    border: none;
+    border-radius: 15px;
+    padding: 5px 15px;
+    font-weight: 600;
+    min-height: 28px;
+}
+QPushButton#aiFixBtn:hover {
+    background-color: ${accent_hover};
+}
+QPlainTextEdit#monacoEditor {
+    background-color: ${bg_inset};
+    color: ${fg_primary};
+    border: 1px solid ${border_subtle};
+    border-radius: 6px;
+    font-family: "Cascadia Mono", Consolas, "Courier New", monospace;
+    font-size: 13px;
+}
+
+/* MarkdownCellWidget */
+MarkdownCellWidget {
+    border-left: 3px solid transparent;
+    background-color: transparent;
+    border-radius: 4px;
+}
+MarkdownCellWidget[focused="true"] {
+    border-left: 3px solid ${accent_base};
+    background-color: ${bg_surface};
+}
+QLabel#mdTypeLabel {
+    color: ${fg_muted};
+    font-size: 11px;
+}
+QPushButton#mdActionBtn {
+    background: transparent;
+    color: ${fg_secondary};
+    border: none;
+    padding: 4px 8px;
+    min-height: 24px;
+}
+QPushButton#mdActionBtn:hover {
+    background-color: ${bg_hover};
+    color: ${accent_base};
+    border-radius: 4px;
+}
+QTextEdit#mdEditor {
+    background-color: ${bg_inset};
+    color: ${fg_primary};
+    border: 1px dashed ${border_strong};
+    border-radius: 6px;
+    padding: 8px;
+}
+QTextEdit#mdEditor:focus {
+    border: 1px solid ${border_focus};
+}
+
+/* NotebookPanel & VSCodeStyleCellWidget */
+QFrame#nbToolbar {
+    background-color: ${bg_surface};
+    border-bottom: 1px solid ${border_subtle};
+}
+QPushButton#nbToolbarBtn {
+    background-color: transparent;
+    color: ${fg_secondary};
+    border: none;
+    padding: 6px 12px;
+    font-weight: 600;
+    min-height: 28px;
+}
+QPushButton#nbToolbarBtn:hover {
+    background-color: ${bg_hover};
+    color: ${accent_base};
+    border-radius: 4px;
+}
+QScrollArea#nbScrollArea {
+    border: none;
+    background-color: ${bg_base};
+}
+QWidget#nbCanvas {
+    background-color: ${bg_base};
+}
+VSCodeStyleCellWidget {
+    background-color: ${bg_surface};
+    border: 1px solid ${border_subtle};
+    border-radius: 8px;
+    margin-bottom: 10px;
+}
+QLabel#nbCellTypeLabel {
+    color: ${fg_secondary};
+    font-size: 11px;
+    font-weight: 600;
+}
+QComboBox#nbLangSelector {
+    background-color: ${bg_elevated};
+    color: ${fg_primary};
+    border: 1px solid ${border_subtle};
+    border-radius: 4px;
+    padding: 2px 8px;
+    min-height: 24px;
+}
+QPushButton#nbRunBtn {
+    background-color: ${accent_base};
+    color: ${fg_onAccent};
+    border: none;
+    padding: 4px 12px;
+    border-radius: 4px;
+    font-weight: 600;
+    min-height: 26px;
+}
+QPushButton#nbRunBtn:hover {
+    background-color: ${accent_hover};
+}
+QTextEdit#nbCellEditor {
+    background-color: ${bg_inset};
+    color: ${fg_primary};
+    border: 1px solid ${border_subtle};
+    border-radius: 6px;
+}
+QTextBrowser#nbCellOutput {
+    background-color: ${bg_inset};
+    color: ${fg_primary};
+    border: none;
+    border-top: 1px solid ${border_subtle};
+    font-family: "Cascadia Mono", Consolas, monospace;
+}
+
+/* FunctionExplorerPanel */
+QLabel#feParamValue {
+    color: ${accent_base};
+    font-weight: 700;
+}
+QLabel#feExampleLabel {
+    color: ${fg_muted};
+    font-size: 11px;
+}
+QPushButton#fePlotBtn {
+    background-color: ${accent_base};
+    color: ${fg_onAccent};
+    border: none;
+    padding: 8px 14px;
+    border-radius: 6px;
+    font-weight: 600;
+}
+QPushButton#fePlotBtn:hover {
+    background-color: ${accent_hover};
+}
+QPushButton#feTransformBtn {
+    background-color: ${bg_elevated};
+    color: ${fg_primary};
+    border: 1px solid ${border_subtle};
+    border-radius: 4px;
+    font-size: 11px;
+    padding: 4px 6px;
+    min-height: 28px;
+}
+QPushButton#feTransformBtn:hover {
+    background-color: ${bg_selected};
+    border-color: ${border_focus};
+}
+QPushButton#feCalcIntBtn {
+    background-color: ${bg_selected};
+    color: ${accent_base};
+    border: 1px solid ${border_focus};
+    border-radius: 6px;
+    padding: 4px 10px;
+    font-weight: 600;
+}
+QPushButton#feCalcIntBtn:hover {
+    background-color: ${accent_base};
+    color: ${fg_onAccent};
+}
+QLabel#feIntResultLabel {
+    color: ${warning};
+    font-weight: 700;
+}
+QPushButton#feCalcDerivBtn {
+    background-color: ${bg_elevated};
+    color: ${obj_conic};
+    border: 1px solid ${obj_conic};
+    border-radius: 6px;
+    padding: 4px 10px;
+    font-weight: 600;
+}
+QPushButton#feCalcDerivBtn:hover {
+    background-color: ${bg_hover};
+}
+QLabel#feDerivResultLabel {
+    color: ${obj_conic};
+    font-weight: 700;
+}
+
+/* JupyterPanel 加载卡片与降级提示 */
+QFrame#jupyterLoadingCard {
+    background-color: ${bg_surface};
+    border: 1px solid ${border_subtle};
+    border-radius: 12px;
+}
+QLabel#jupyterSpinner {
+    color: ${accent_base};
+    font-size: 36px;
+}
+QLabel#jupyterSpinner[error="true"] {
+    color: ${danger};
+}
+QLabel#jupyterTitle {
+    color: ${fg_primary};
+    font-size: 18px;
+    font-weight: 700;
+}
+QLabel#jupyterSub {
+    color: ${fg_secondary};
+    font-size: 13px;
+}
+QPushButton#jupyterRetryBtn {
+    background-color: ${bg_elevated};
+    color: ${accent_base};
+    border: 1px solid ${border_strong};
+    border-radius: 6px;
+    padding: 6px 18px;
+    font-size: 13px;
+}
+QPushButton#jupyterRetryBtn:hover {
+    background-color: ${bg_hover};
+    border-color: ${accent_base};
+}
+QLabel#jupyterNoWebEngine {
+    color: ${warning};
+    background-color: ${bg_surface};
+    border: 1px solid ${border_subtle};
+    border-radius: 8px;
+    font-size: 14px;
+    padding: 40px;
+}
+
+/* AIToolsPanel */
+QLabel#aiEquationLabel {
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 14px;
+    color: ${fg_primary};
+}
+QGraphicsView#aiDrawingView {
+    background-color: ${bg_canvas};
+    border: 1px solid ${border_strong};
+    border-radius: 6px;
+}
+QTextBrowser#aiOutputArea {
+    background-color: ${bg_inset};
+    color: ${fg_primary};
+    border: 1px solid ${border_subtle};
+    border-radius: 6px;
+    font-family: "Cascadia Mono", Consolas, monospace;
+    font-size: 12px;
+}
+QListWidget#aiPlanList {
+    background-color: ${bg_inset};
+    border: 1px solid ${border_subtle};
+    border-radius: 6px;
+}
+QPushButton#aiStartTeachBtn {
+    background-color: ${success};
+    color: ${fg_onAccent};
+    border: none;
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-weight: 600;
+}
+QLabel#aiStepBanner {
+    color: ${accent_base};
+    font-weight: 600;
+}
+QLineEdit#aiChatInput {
+    border: 1px solid ${border_strong};
+    border-radius: 6px;
+    padding: 6px 10px;
+}
+QLineEdit#aiChatInput:focus {
+    border: 1.5px solid ${border_focus};
+}
+QPushButton#aiSendBtn {
+    background-color: ${accent_base};
+    color: ${fg_onAccent};
+    border: none;
+    border-radius: 6px;
+    padding: 6px 16px;
+    font-weight: 600;
+}
+QPushButton#aiSendBtn:hover {
+    background-color: ${accent_hover};
+}
+QPushButton#aiSendBtn[generating="true"] {
+    background-color: ${danger};
+    color: ${fg_onAccent};
+}
+QLabel#aiActionLabel {
+    font-weight: 600;
+    color: ${fg_secondary};
+}
+QLabel#aiActionLabel[aiState="thinking"] {
+    color: ${warning};
+}
+QLabel#aiActionLabel[aiState="generating"] {
+    color: ${accent_base};
+}
+QLabel#aiActionLabel[aiState="tool"] {
+    color: ${success};
+}
+QLabel#aiActionLabel[aiState="error"] {
+    color: ${danger};
+}
+QFrame#aiDraftCard {
+    background-color: ${bg_elevated};
+    border: 1px solid ${border_strong};
+    border-radius: 8px;
+}
+QLabel#aiDraftMsg {
+    color: ${accent_base};
+    font-weight: 600;
+}
+QPushButton#aiDraftAcceptBtn {
+    background-color: ${bg_surface};
+    color: ${success};
+    border: 1px solid ${success};
+    border-radius: 4px;
+    padding: 4px 10px;
+    font-weight: 600;
+    min-height: 26px;
+}
+QPushButton#aiDraftAcceptBtn:hover {
+    background-color: ${success};
+    color: ${fg_onAccent};
+}
+QPushButton#aiDraftDiscardBtn {
+    background-color: ${bg_surface};
+    color: ${danger};
+    border: 1px solid ${danger};
+    border-radius: 4px;
+    padding: 4px 10px;
+    font-weight: 600;
+    min-height: 26px;
+}
+QPushButton#aiDraftDiscardBtn:hover {
+    background-color: ${danger};
+    color: ${fg_onAccent};
+}
+QFrame#aiLoadingBanner {
+    background-color: ${bg_elevated};
+    border: 1px solid ${border_subtle};
+    border-radius: 6px;
+}
+QLabel#aiLoadingLabel {
+    color: ${fg_secondary};
+    font-size: 12px;
+}
+QProgressBar#aiLoadingProgress {
+    height: 4px;
+    border-radius: 2px;
 }

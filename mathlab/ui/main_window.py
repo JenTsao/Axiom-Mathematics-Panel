@@ -1,5 +1,6 @@
+import time
+
 from PySide6.QtCore import QTimer
-from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import QMainWindow
 
 from mathlab.core.ai_manager import AIManager
@@ -27,6 +28,8 @@ from mathlab.core.undo_stack import UndoStack
 from mathlab.data.project import ProjectManager
 from mathlab.ui.omni_bar import OmniBar
 from mathlab.ui.session_state import restore_session, save_session
+from mathlab.ui.shortcut_registry import ShortcutRegistry
+from mathlab.ui.toast import ToastManager
 
 # ── JupyterLab 嵌入组件（软依赖：WebEngine 不存在时降级为占位面板） ──────────
 try:
@@ -68,6 +71,7 @@ class MainWindow(
     QMainWindow,
 ):
     def __init__(self):
+        t_start = time.perf_counter()
         super().__init__()
         self.setWindowTitle(t("main_window.title"))
         # 仅作首次启动的兜底尺寸；已有持久化布局时由 restore_session() 覆盖（R-09）
@@ -75,6 +79,8 @@ class MainWindow(
 
         self._objects_data: dict = {}
         self.current_function_id = None
+        self.shortcut_registry = ShortcutRegistry(self)
+        self.toast_manager = ToastManager(self)
 
         # ── 核心引擎初始化（唯一实例化点，消除双重初始化） ───────────────
         self._init_engines()
@@ -130,12 +136,21 @@ class MainWindow(
 
         self.canvas_tracker = CanvasShadowTracker(self.geometry_engine)
 
-        # 实例化 Omni-Bar，保证生命周期绑定
-        self.omni_bar = OmniBar(self)
+        # 实例化 Omni-Bar（默认懒加载 WebEngine，避免阻塞冷启动首屏 — R-24）
+        self.omni_bar = OmniBar(self, lazy=True)
 
-        # 注册全局快捷键 (Ctrl+K 或 Cmd+K)
-        self.shortcut_summon = QShortcut(QKeySequence("Ctrl+K"), self)
-        self.shortcut_summon.activated.connect(self.toggle_omni_bar)
+        # 通过 ShortcutRegistry 集中注册快捷键（带冲突检测与 WebEngine 焦点保护 — R-18）
+        self.shortcut_summon = self.shortcut_registry.register(
+            "omni_bar.toggle",
+            "Ctrl+K",
+            self.toggle_omni_bar,
+            description="Toggle Omni-Bar",
+        )
+        conflicts = self.shortcut_registry.get_conflicts()
+        if conflicts:
+            logger.warning("检测到快捷键冲突: %s", conflicts)
+
+        logger.info("MainWindow 首屏初始化耗时: %.1f ms", (time.perf_counter() - t_start) * 1000.0)
 
         # ── 延迟初始化：窗口显示后再加载非关键模块 ─────────────────────
         # 使用 QTimer.singleShot(0) 确保窗口先绘制完成，再执行重型初始化

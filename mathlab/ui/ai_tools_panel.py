@@ -40,6 +40,15 @@ from mathlab.ui.code_editor import AutocompleteTextEdit
 from mathlab.ui.latex_chat_widget import LatexChatWidget
 from mathlab.ui.quiz_panel import QuizCardWidget
 from mathlab.utils.i18n_manager import t
+from mathlab.utils.theme_manager import get_current_theme
+from mathlab.utils.theme_tokens import get_tokens
+
+
+def _repolish(widget: QWidget) -> None:
+    """刷新控件动态属性对应的 QSS 规则。"""
+    widget.style().unpolish(widget)
+    widget.style().polish(widget)
+
 
 try:
     from mathlab.utils.logger import get_logger
@@ -110,7 +119,7 @@ class AIToolsPanel(QDockWidget):
         self.scatter_layout.addWidget(self.result_label)
 
         self.equation_label = QLabel()
-        self.equation_label.setStyleSheet("font-family: serif; font-size: 14px;")
+        self.equation_label.setObjectName("aiEquationLabel")
         self.scatter_layout.addWidget(self.equation_label)
 
         self.mse_label = QLabel()
@@ -125,10 +134,10 @@ class AIToolsPanel(QDockWidget):
         self.digit_layout = QVBoxLayout(self.digit_tab)
 
         self.drawing_view = QGraphicsView()
+        self.drawing_view.setObjectName("aiDrawingView")
         self.drawing_scene = QGraphicsScene()
         self.drawing_view.setScene(self.drawing_scene)
         self.drawing_view.setFixedSize(280, 280)
-        self.drawing_view.setStyleSheet("background-color: white; border: 1px solid #c3c6d7;")
 
         self.drawing_points = []
 
@@ -185,14 +194,6 @@ class AIToolsPanel(QDockWidget):
 
         self.code_editor = AutocompleteTextEdit()
         self.code_editor.setPlaceholderText(t("ai_tools.write_training_code"))
-        self.code_editor.setStyleSheet("""
-            QPlainTextEdit {
-                background-color: #1e1e1e;
-                color: #d4d4d4;
-                font-family: Consolas, monospace;
-                font-size: 12px;
-            }
-        """)
 
         self.run_button = QPushButton(t("ai_tools.run_training"))
         self.stop_training_button = QPushButton(t("ai_tools.stop"))
@@ -200,15 +201,8 @@ class AIToolsPanel(QDockWidget):
         self.progress_bar = QProgressBar()
 
         self.output_area = QTextBrowser()
+        self.output_area.setObjectName("aiOutputArea")
         self.output_area.setOpenExternalLinks(True)
-        self.output_area.setStyleSheet("""
-            QTextBrowser {
-                background-color: #1e1e1e;
-                color: #d4d4d4;
-                font-family: Consolas, monospace;
-                font-size: 11px;
-            }
-        """)
 
         self.training_layout.addWidget(self.code_editor)
         self.training_layout.addWidget(self.run_button)
@@ -251,12 +245,12 @@ class AIToolsPanel(QDockWidget):
         self.plan_box = SmoothCollapsibleBox("📋 教学大纲 (点击折叠/展开)")
         plan_inner_layout = QVBoxLayout()
         self.plan_list_view = QListWidget()
+        self.plan_list_view.setObjectName("aiPlanList")
         self.plan_list_view.setFixedHeight(120)  # 限制最高高度
-        self.plan_list_view.setStyleSheet("border: 1px solid #E0E0E0; border-radius: 4px;")
 
         self.start_teach_btn = QPushButton("🚀 开始分步互动讲解")
+        self.start_teach_btn.setObjectName("aiStartTeachBtn")
         self.start_teach_btn.setEnabled(False)
-        self.start_teach_btn.setStyleSheet("background-color: #27AE60; color: white; padding: 6px; border-radius: 4px;")
         self.start_teach_btn.clicked.connect(self._start_execution_teaching)
 
         plan_inner_layout.addWidget(self.plan_list_view)
@@ -275,7 +269,7 @@ class AIToolsPanel(QDockWidget):
         # 教学控制条：上一步、下一步
         self.step_control_bar = QHBoxLayout()
         self.current_step_banner = QLabel("🚶‍♂️ 准备就绪")
-        self.current_step_banner.setStyleSheet("color: #007ACC; font-weight: bold;")
+        self.current_step_banner.setObjectName("aiStepBanner")
         self.next_step_btn = QPushButton("⏭️ 下一步提示")
         self.next_step_btn.setVisible(False)
         self.next_step_btn.clicked.connect(self._trigger_next_step_lecture)
@@ -286,12 +280,13 @@ class AIToolsPanel(QDockWidget):
 
         # 3. 底部：输入区
         self.chat_input = QLineEdit()
+        self.chat_input.setObjectName("aiChatInput")
         self.chat_input.setFixedHeight(40)
-        self.chat_input.setStyleSheet("border: 1px solid #CCC; border-radius: 6px; padding: 4px;")
         self.chat_input.setPlaceholderText(t("ai_tools.ask_question"))
         self.chat_input.returnPressed.connect(self.on_send_message)
 
         self.send_button = QPushButton(t("ai_tools.send"))
+        self.send_button.setObjectName("aiSendBtn")
         self.send_button.clicked.connect(self.on_send_message)
 
         input_layout = QHBoxLayout()
@@ -309,7 +304,8 @@ class AIToolsPanel(QDockWidget):
         self.agent_label = QLabel(f"{agent.icon} {agent.name} (@{agent.id})")
         # ✨ 换上我们带有呼吸律动特性的 Label
         self.action_label = BreathingLabel("💤 就绪")
-        self.action_label.setStyleSheet("font-weight: bold; color: #555;")
+        self.action_label.setObjectName("aiActionLabel")
+        self.action_label.setProperty("aiState", "idle")
         self.token_label = QLabel("⚡ 0 Tokens")
 
         status_layout.addWidget(self.agent_label)
@@ -328,7 +324,24 @@ class AIToolsPanel(QDockWidget):
 
         self.tab_widget.addTab(self.assistant_tab, t("ai_tools.ai_assistant"))
 
+        # ── 统一异步任务加载条（R-16 / A-08）────────────────────────────
+        self.loading_banner = QFrame()
+        self.loading_banner.setObjectName("aiLoadingBanner")
+        loading_layout = QVBoxLayout(self.loading_banner)
+        loading_layout.setContentsMargins(10, 6, 10, 6)
+        loading_layout.setSpacing(4)
+        self.loading_label = QLabel("")
+        self.loading_label.setObjectName("aiLoadingLabel")
+        self.loading_progress = QProgressBar()
+        self.loading_progress.setObjectName("aiLoadingProgress")
+        self.loading_progress.setRange(0, 0)  # 不定长加载动画
+        self.loading_progress.setTextVisible(False)
+        loading_layout.addWidget(self.loading_label)
+        loading_layout.addWidget(self.loading_progress)
+        self.loading_banner.hide()
+
         # ------------------------------------------------------------------
+        self.layout.addWidget(self.loading_banner)
         self.layout.addWidget(self.tab_widget)
         self.setWidget(self.widget)
 
@@ -359,6 +372,7 @@ class AIToolsPanel(QDockWidget):
         self.tab_widget.setTabText(1, t("ai_tools.digit_recognition"))
         self.tab_widget.setTabText(2, t("ai_tools.clustering"))
         self.tab_widget.setTabText(3, t("ai_tools.training_notebook"))
+        self.tab_widget.setTabText(4, t("ai_tools.ai_assistant"))
 
         # Scatter tab
         self.model_type_label.setText(t("ai_tools.model_type"))
@@ -387,6 +401,11 @@ class AIToolsPanel(QDockWidget):
         self.code_editor.setPlaceholderText(t("ai_tools.write_training_code"))
         self.run_button.setText(t("ai_tools.run_training"))
         self.stop_training_button.setText(t("ai_tools.stop"))
+
+        # Assistant tab
+        self.chat_input.setPlaceholderText(t("ai_tools.ask_question"))
+        if not self.is_generating:
+            self.send_button.setText(t("ai_tools.send"))
 
     # ------------------------------------------------------------------
     # Slot handlers
@@ -472,8 +491,9 @@ class AIToolsPanel(QDockWidget):
         scene_pos = self.drawing_view.mapToScene(event.pos())
         self.drawing_points.append((scene_pos.x(), scene_pos.y()))
 
+        stroke_color = QColor(get_tokens(get_current_theme())["fg.primary"])
         dot = QGraphicsEllipseItem(scene_pos.x() - 5, scene_pos.y() - 5, 10, 10)
-        dot.setBrush(QBrush(QColor("#0b1c30")))
+        dot.setBrush(QBrush(stroke_color))
         self.drawing_scene.addItem(dot)
 
     def on_drawing_move(self, event):
@@ -481,8 +501,9 @@ class AIToolsPanel(QDockWidget):
             scene_pos = self.drawing_view.mapToScene(event.pos())
             last_x, last_y = self.drawing_points[-1]
 
+            stroke_color = QColor(get_tokens(get_current_theme())["fg.primary"])
             line = QGraphicsLineItem(last_x, last_y, scene_pos.x(), scene_pos.y())
-            line.setPen(QPen(QColor("#0b1c30"), 8))
+            line.setPen(QPen(stroke_color, 8))
             self.drawing_scene.addItem(line)
 
             self.drawing_points.append((scene_pos.x(), scene_pos.y()))
@@ -531,13 +552,19 @@ class AIToolsPanel(QDockWidget):
     def append_training_output(self, text):
         self.output_area.append(text)
 
-    def set_loading_state(self, is_loading: bool):
+    def set_loading_state(self, is_loading: bool, message: str = ""):
         self.fit_button.setEnabled(not is_loading)
         self.cluster_button.setEnabled(not is_loading)
         self.recognize_button.setEnabled(not is_loading)
         self.generate_button.setEnabled(not is_loading)
         self.run_button.setEnabled(not is_loading)
         self.stop_training_button.setEnabled(is_loading)
+        if hasattr(self, "loading_banner"):
+            if is_loading:
+                self.loading_label.setText(message or t("ai_tools.running_training"))
+                self.loading_banner.show()
+            else:
+                self.loading_banner.hide()
 
     # ------------------------------------------------------------------
     # AI Assistant Chat Methods
@@ -738,7 +765,8 @@ class AIToolsPanel(QDockWidget):
 
         self.chat_input.setEnabled(False)
         self.send_button.setText("⏹ 停止生成")
-        self.send_button.setStyleSheet("background-color: #E74C3C; color: white;")
+        self.send_button.setProperty("generating", "true")
+        _repolish(self.send_button)
         self.is_generating = True
 
         main_win = self.window()
@@ -804,7 +832,8 @@ class AIToolsPanel(QDockWidget):
         self.chat_input.setEnabled(True)
         self.send_button.setEnabled(True)
         self.send_button.setText(t("ai_tools.send"))
-        self.send_button.setStyleSheet("")
+        self.send_button.setProperty("generating", "false")
+        _repolish(self.send_button)
         self.chat_input.setFocus()
         self.is_generating = False
 
@@ -999,7 +1028,8 @@ class AIToolsPanel(QDockWidget):
                             break
                     if target_obj and hasattr(canvas, "spawn_spatial_bubble"):
                         canvas.spawn_spatial_bubble(target_obj.id, text)
-                        magic_html = f"<div style='color: #8E44AD; margin-left: 10px;'><i>📍 已在 {target_name} 旁生成讲解气泡</i></div><br>"
+                        tokens = get_tokens(get_current_theme())
+                        magic_html = f"<div style='color: {tokens['obj.polygon']}; margin-left: 10px;'><i>📍 已在 {target_name} 旁生成讲解气泡</i></div><br>"
                         self.chat_display.append(magic_html)
             except Exception as e:
                 logger.error("生成空间气泡失败: %s", e)
@@ -1010,7 +1040,8 @@ class AIToolsPanel(QDockWidget):
 
                 if hasattr(main_window, "geometry_engine") and hasattr(main_window, "central_widget"):
                     main_window.central_widget.highlight_elements(main_window.geometry_engine, element_names, color)
-                    magic_html = f"<div style='background-color: #FEF9E7; color: #D35400; padding: 8px; border-radius: 4px; border-left: 4px solid #F39C12;'><i>🔦 激光笔已激活：正在引导关注 {', '.join(element_names)} </i></div><br>"
+                    tokens = get_tokens(get_current_theme())
+                    magic_html = f"<div style='background-color: {tokens['bg.elevated']}; color: {tokens['warning']}; padding: 8px; border-radius: 4px; border-left: 4px solid {tokens['warning']};'><i>🔦 激光笔已激活：正在引导关注 {', '.join(element_names)} </i></div><br>"
                     self.chat_display.append(magic_html)
             except Exception as e:
                 logger.error("高亮指令执行失败: %s", e)
@@ -1022,22 +1053,19 @@ class AIToolsPanel(QDockWidget):
         logger.info("工具调用完成: tool=%s, 耗时=%.3fs", tool_name, _elapsed)
 
     def _render_draft_review_card(self):
-        card_widget = QWidget()
+        card_widget = QFrame()
+        card_widget.setObjectName("aiDraftCard")
         card_layout = QHBoxLayout(card_widget)
-        card_layout.setContentsMargins(10, 5, 10, 5)
+        card_layout.setContentsMargins(10, 6, 10, 6)
 
         msg_label = QLabel("✨ AI 画好了一个草稿图，是否采纳？")
-        msg_label.setStyleSheet("color: #0078D7; font-weight: bold;")
+        msg_label.setObjectName("aiDraftMsg")
 
         btn_accept = QPushButton("✅ 采纳")
-        btn_accept.setStyleSheet(
-            "background-color: #E8F5E9; border: 1px solid #4CAF50; border-radius: 4px; padding: 4px 8px;"
-        )
+        btn_accept.setObjectName("aiDraftAcceptBtn")
 
         btn_discard = QPushButton("❌ 撤销")
-        btn_discard.setStyleSheet(
-            "background-color: #FFEBEE; border: 1px solid #F44336; border-radius: 4px; padding: 4px 8px;"
-        )
+        btn_discard.setObjectName("aiDraftDiscardBtn")
 
         card_layout.addWidget(msg_label)
         card_layout.addStretch()
@@ -1051,14 +1079,18 @@ class AIToolsPanel(QDockWidget):
             if hasattr(main_window, "geometry_engine") and hasattr(main_window.geometry_engine, "commit_draft"):
                 main_window.geometry_engine.commit_draft()
             card_widget.deleteLater()
-            self.chat_display.append("<div style='color: #27AE60;'><i>[系统] 您已采纳 AI 的画图方案。</i></div><br>")
+            tokens = get_tokens(get_current_theme())
+            self.chat_display.append(
+                f"<div style='color: {tokens['success']};'><i>[系统] 您已采纳 AI 的画图方案。</i></div><br>"
+            )
 
         def on_discard():
             main_window = self.window()
             if hasattr(main_window, "geometry_engine") and hasattr(main_window.geometry_engine, "discard_draft"):
                 main_window.geometry_engine.discard_draft()
             card_widget.deleteLater()
-            self.chat_display.append("<div style='color: #E74C3C;'><i>[系统] 草稿已撤销。</i></div><br>")
+            tokens = get_tokens(get_current_theme())
+            self.chat_display.append(f"<div style='color: {tokens['danger']};'><i>[系统] 草稿已撤销。</i></div><br>")
 
         btn_accept.clicked.connect(on_accept)
         btn_discard.clicked.connect(on_discard)
@@ -1089,17 +1121,26 @@ class AIToolsPanel(QDockWidget):
                 print(f"执行指令 {op} 失败: {e}")
 
     def on_request_error(self, error_msg: str):
+        tokens = get_tokens(get_current_theme())
         self.chat_display.append(
-            f"<span style='color: #dc2626;'><b>❌ {t('ai_tools.error')}:</b> {error_msg}</span><hr>"
+            f"<span style='color: {tokens['danger']};'><b>❌ {t('ai_tools.error')}:</b> {error_msg}</span><hr>"
         )
         self.chat_input.setEnabled(True)
         self.send_button.setEnabled(True)
         self.send_button.setText(t("ai_tools.send"))
+        self.send_button.setProperty("generating", "false")
+        _repolish(self.send_button)
+        self.is_generating = False
         if hasattr(self, "breath_anim"):
             self.breath_anim.stop()
             from mathlab.ui.animations import get_opacity_effect
 
             get_opacity_effect(self.send_button).setOpacity(1.0)
+
+    def _set_action_state(self, text: str, ai_state: str) -> None:
+        self.action_label.setText(text)
+        self.action_label.setProperty("aiState", ai_state)
+        _repolish(self.action_label)
 
     def _on_state_change(self, state: AIState):
         """让 UI 随 AI 状态实时呼吸"""
@@ -1107,14 +1148,12 @@ class AIToolsPanel(QDockWidget):
             self.send_button.setText(t("ai_tools.send"))
             self.send_button.setEnabled(True)
             self.action_label.stop_breathing()
-            self.action_label.setText("💤 就绪")
-            self.action_label.setStyleSheet("color: #555;")
+            self._set_action_state("💤 就绪", "idle")
 
         elif state == AIState.THINKING:
             self.send_button.setText("🤔 思考中...")
             self.send_button.setEnabled(False)
-            self.action_label.setText("🤔 正在进行数学推理...")
-            self.action_label.setStyleSheet("color: #E67E22;")  # 橙色
+            self._set_action_state("🤔 正在进行数学推理...", "thinking")
             # 💡 触发呼吸灯律动特效！
             self.action_label.start_breathing()
 
@@ -1123,22 +1162,19 @@ class AIToolsPanel(QDockWidget):
             self.send_button.setEnabled(False)
             # 停止呼吸，保持高亮常亮
             self.action_label.stop_breathing()
-            self.action_label.setText("✍️ 正在生成排版...")
-            self.action_label.setStyleSheet("color: #007ACC;")  # 蓝色
+            self._set_action_state("✍️ 正在生成排版...", "generating")
 
         elif state == AIState.EXECUTING_TOOL:
             self.send_button.setText("⚙️ 执行中...")
             self.send_button.setEnabled(False)
             self.action_label.stop_breathing()
-            self.action_label.setText("⚙️ 魔法画笔执行中...")
-            self.action_label.setStyleSheet("color: #27AE60;")  # 绿色
+            self._set_action_state("⚙️ 魔法画笔执行中...", "tool")
 
         elif state == AIState.ERROR:
             self.send_button.setText(t("ai_tools.send"))
             self.send_button.setEnabled(True)
             self.action_label.stop_breathing()
-            self.action_label.setText("❌ 连接异常")
-            self.action_label.setStyleSheet("color: #E74C3C;")
+            self._set_action_state("❌ 连接异常", "error")
 
     def _start_execution_teaching(self):
         """用户点击开始讲解"""
@@ -1187,8 +1223,9 @@ class AIToolsPanel(QDockWidget):
 
         cost_text = f"约 ￥{cost_estimate:.4f}" if cost_estimate > 0 else "免费"
 
+        tokens = get_tokens(get_current_theme())
         usage_html = f"""
-        <div style='text-align: right; color: #aaa; font-size: 10px; margin-top: 5px;'>
+        <div style='text-align: right; color: {tokens['fg.muted']}; font-size: 10px; margin-top: 5px;'>
             ⚡ 消耗: {total} Tokens (上下文 {prompt_tokens} + 生成 {completion_tokens}) 
             | {cost_text}
         </div>

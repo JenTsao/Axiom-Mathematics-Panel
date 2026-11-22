@@ -18,7 +18,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from mathlab.core.signals import theme_signals
 from mathlab.utils.i18n_manager import t
+from mathlab.utils.theme_manager import get_current_theme
+from mathlab.utils.theme_tokens import get_tokens
 
 
 class AlgoVisPanel(QDockWidget):
@@ -87,6 +90,8 @@ class AlgoVisPanel(QDockWidget):
         self.view = QGraphicsView(self.scene)
         self.view.setRenderHint(QPainter.Antialiasing)
         self.view.setMinimumHeight(200)
+        self._apply_scene_theme(get_current_theme())
+        theme_signals.theme_changed.connect(self._on_theme_changed)
 
         # Assemble layout
         self.layout.addWidget(self.algorithm_combo)
@@ -231,8 +236,20 @@ class AlgoVisPanel(QDockWidget):
             self.draw_clustering(state)
 
     # ------------------------------------------------------------------
-    # Drawing helpers
+    # Theme helpers & Drawing helpers（三主题自适应，无硬编码色值）
     # ------------------------------------------------------------------
+    def _tokens(self) -> dict[str, str]:
+        return get_tokens(get_current_theme())
+
+    def _apply_scene_theme(self, theme_name: str) -> None:
+        tokens = get_tokens(theme_name)
+        self.scene.setBackgroundBrush(QBrush(QColor(tokens["bg.canvas"])))
+
+    def _on_theme_changed(self, theme_name: str) -> None:
+        self._apply_scene_theme(theme_name)
+        if self.current_state is not None:
+            self.update_visualization(self.current_state)
+
     def draw_sorting(self, state):
         arr = state.get("array", [])
         comparing = state.get("comparing", [])
@@ -242,6 +259,7 @@ class AlgoVisPanel(QDockWidget):
         if not arr:
             return
 
+        tokens = self._tokens()
         max_val = max(arr) if arr else 1
         bar_width = 40
         bar_spacing = 10
@@ -252,21 +270,22 @@ class AlgoVisPanel(QDockWidget):
             x = start_x + i * (bar_width + bar_spacing)
             height = (val / max_val) * 150
 
-            color = QColor("#d3e4fe")
+            color = QColor(tokens["obj.point"])
 
             if i in comparing:
-                color = QColor("#ba1a1a")
+                color = QColor(tokens["danger"])
             elif i in swapping:
-                color = QColor("#22c55e")
+                color = QColor(tokens["warning"])
             elif i in sorted_indices:
-                color = QColor("#006058")
+                color = QColor(tokens["success"])
 
             bar = QGraphicsRectItem(x, start_y - height, bar_width, height)
             bar.setBrush(QBrush(color))
-            bar.setPen(QPen(QColor("#737686"), 1))
+            bar.setPen(QPen(QColor(tokens["border.strong"]), 1))
             self.scene.addItem(bar)
 
             label = QGraphicsTextItem(str(val))
+            label.setDefaultTextColor(QColor(tokens["fg.primary"]))
             label.setPos(x + bar_width / 2 - 10, start_y + 5)
             self.scene.addItem(label)
 
@@ -279,6 +298,7 @@ class AlgoVisPanel(QDockWidget):
         if not arr:
             return
 
+        tokens = self._tokens()
         max_val = max(arr) if arr else 1
         bar_width = 30
         bar_spacing = 8
@@ -289,14 +309,14 @@ class AlgoVisPanel(QDockWidget):
             x = start_x + i * (bar_width + bar_spacing)
             height = (val / max_val) * 150
 
-            color = QColor("#d3e4fe")
+            color = QColor(tokens["border.subtle"])
 
             if search_range[0] <= i <= search_range[1]:
-                color = QColor("#dbe1ff")
+                color = QColor(tokens["obj.function"])
             if i == mid:
-                color = QColor("#004ac6")
+                color = QColor(tokens["accent.base"])
             if val == target:
-                color = QColor("#22c55e")
+                color = QColor(tokens["success"])
 
             bar = QGraphicsRectItem(x, start_y - height, bar_width, height)
             bar.setBrush(QBrush(color))
@@ -308,6 +328,7 @@ class AlgoVisPanel(QDockWidget):
         visited = state.get("visited", {})
         current = state.get("current", -1)
 
+        tokens = self._tokens()
         node_positions = {}
         center_x = 300
         center_y = 150
@@ -318,21 +339,22 @@ class AlgoVisPanel(QDockWidget):
             y = center_y + radius * (i % 2 - 0.5) * 2
             node_positions[node] = (x, y)
 
-            color = QColor("#d3e4fe")
+            color = QColor(tokens["bg.elevated"])
             if visited.get(node, False):
-                color = QColor("#22c55e")
+                color = QColor(tokens["success"])
             if node == current:
-                color = QColor("#004ac6")
+                color = QColor(tokens["accent.base"])
                 node_radius = 25
             else:
                 node_radius = 20
 
             circle = QGraphicsEllipseItem(x - node_radius, y - node_radius, node_radius * 2, node_radius * 2)
             circle.setBrush(QBrush(color))
-            circle.setPen(QPen(QColor("#0b1c30"), 2))
+            circle.setPen(QPen(QColor(tokens["fg.primary"]), 2))
             self.scene.addItem(circle)
 
             label = QGraphicsTextItem(str(node))
+            label.setDefaultTextColor(QColor(tokens["fg.primary"]))
             label.setPos(x - 5, y - 5)
             label.setFont(QFont("Arial", 12, QFont.Bold))
             self.scene.addItem(label)
@@ -341,9 +363,9 @@ class AlgoVisPanel(QDockWidget):
             x1, y1 = node_positions[edge[0]]
             x2, y2 = node_positions[edge[1]]
 
-            color = QColor("#737686")
+            color = QColor(tokens["border.strong"])
             if visited.get(edge[0], False) and visited.get(edge[1], False):
-                color = QColor("#22c55e")
+                color = QColor(tokens["success"])
 
             line = QGraphicsLineItem(x1, y1, x2, y2)
             line.setPen(QPen(color, 2))
@@ -356,6 +378,7 @@ class AlgoVisPanel(QDockWidget):
         visited = state.get("visited", {})
         current = state.get("current", -1)
 
+        tokens = self._tokens()
         node_positions = {}
         center_x = 300
         center_y = 150
@@ -366,23 +389,25 @@ class AlgoVisPanel(QDockWidget):
             y = center_y + radius * (i % 2 - 0.5) * 2
             node_positions[node] = (x, y)
 
-            color = QColor("#d3e4fe")
+            color = QColor(tokens["bg.elevated"])
             if visited.get(node, False):
-                color = QColor("#22c55e")
+                color = QColor(tokens["success"])
             if node == current:
-                color = QColor("#004ac6")
+                color = QColor(tokens["accent.base"])
 
             circle = QGraphicsEllipseItem(x - 20, y - 20, 40, 40)
             circle.setBrush(QBrush(color))
-            circle.setPen(QPen(QColor("#0b1c30"), 2))
+            circle.setPen(QPen(QColor(tokens["fg.primary"]), 2))
             self.scene.addItem(circle)
 
             label = QGraphicsTextItem(str(node))
+            label.setDefaultTextColor(QColor(tokens["fg.primary"]))
             label.setPos(x - 5, y - 5)
             self.scene.addItem(label)
 
             dist = distances.get(node, float("inf"))
             dist_label = QGraphicsTextItem(f"{dist:.1f}")
+            dist_label.setDefaultTextColor(QColor(tokens["fg.secondary"]))
             dist_label.setPos(x - 10, y + 25)
             dist_label.setFont(QFont("Arial", 10))
             self.scene.addItem(dist_label)
@@ -393,12 +418,13 @@ class AlgoVisPanel(QDockWidget):
             weight = edge[2] if len(edge) > 2 else 1
 
             line = QGraphicsLineItem(x1, y1, x2, y2)
-            line.setPen(QPen(QColor("#737686"), 2))
+            line.setPen(QPen(QColor(tokens["border.strong"]), 2))
             self.scene.addItem(line)
 
             mid_x = (x1 + x2) / 2
             mid_y = (y1 + y2) / 2
             weight_label = QGraphicsTextItem(str(weight))
+            weight_label.setDefaultTextColor(QColor(tokens["fg.secondary"]))
             weight_label.setPos(mid_x - 8, mid_y - 10)
             self.scene.addItem(weight_label)
 
@@ -409,6 +435,7 @@ class AlgoVisPanel(QDockWidget):
         if not points:
             return
 
+        tokens = self._tokens()
         min_x = min(p[0] for p in points)
         max_x = max(p[0] for p in points)
         min_y = min(p[1] for p in points)
@@ -422,7 +449,7 @@ class AlgoVisPanel(QDockWidget):
             x = point[0] * scale + offset_x
             y = -point[1] * scale + offset_y
 
-            color = QColor("#004ac6") if point in hull else QColor("#d3e4fe")
+            color = QColor(tokens["accent.base"]) if point in hull else QColor(tokens["obj.point"])
 
             circle = QGraphicsEllipseItem(x - 5, y - 5, 10, 10)
             circle.setBrush(QBrush(color))
@@ -439,7 +466,7 @@ class AlgoVisPanel(QDockWidget):
                 y2 = -p2[1] * scale + offset_y
 
                 line = QGraphicsLineItem(x1, y1, x2, y2)
-                line.setPen(QPen(QColor("#4b41e1"), 2))
+                line.setPen(QPen(QColor(tokens["obj.segment"]), 2))
                 self.scene.addItem(line)
 
     def draw_clustering(self, state):
@@ -450,13 +477,14 @@ class AlgoVisPanel(QDockWidget):
         if not points:
             return
 
+        tokens = self._tokens()
         colors = [
-            QColor("#004ac6"),
-            QColor("#4b41e1"),
-            QColor("#006058"),
-            QColor("#ba1a1a"),
-            QColor("#9333ea"),
-            QColor("#06b6d4"),
+            QColor(tokens["obj.point"]),
+            QColor(tokens["obj.segment"]),
+            QColor(tokens["obj.circle"]),
+            QColor(tokens["obj.conic"]),
+            QColor(tokens["obj.polygon"]),
+            QColor(tokens["obj.locus"]),
         ]
 
         for i, cluster in enumerate(clusters):
@@ -476,5 +504,5 @@ class AlgoVisPanel(QDockWidget):
             color = colors[i % len(colors)]
             circle = QGraphicsEllipseItem(x - 8, y - 8, 16, 16)
             circle.setBrush(QBrush(color))
-            circle.setPen(QPen(QColor("#0b1c30"), 2))
+            circle.setPen(QPen(QColor(tokens["fg.primary"]), 2))
             self.scene.addItem(circle)

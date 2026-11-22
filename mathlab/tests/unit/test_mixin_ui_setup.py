@@ -239,7 +239,7 @@ def test_command_palette_and_shortcuts_registered(docked):
     assert isinstance(docked.cmd_palette, CommandPalette)
     sequences = {s.key().toString() for s in docked.findChildren(QShortcut)}
     assert "Ctrl+Shift+P" in sequences
-    assert "Ctrl+P" in sequences
+    assert "Ctrl+P" not in sequences
 
 
 # ── setup_ui ──────────────────────────────────────────────────────────────

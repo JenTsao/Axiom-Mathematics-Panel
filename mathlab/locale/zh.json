@@ -565,5 +565,25 @@
       "delete": "删除对象",
       "auto": "编辑操作"
     }
+  },
+  "toast": {
+    "undone": "已撤销上一步操作",
+    "redone": "已重做操作",
+    "theme_switched": "已切换至 {0} 主题",
+    "layout_reset": "已恢复默认面板布局",
+    "project_saved": "项目已保存",
+    "project_opened": "项目已打开",
+    "exported": "导出完成",
+    "ai_fit_running": "正在训练 {0} 模型...",
+    "ai_fit_done": "模型拟合完成",
+    "ai_cluster_running": "正在执行 {0} 聚类分析...",
+    "ai_cluster_done": "聚类分析完成",
+    "ai_recognize_running": "正在识别手写数字...",
+    "ai_recognize_done": "数字识别完成",
+    "ai_points_running": "正在生成随机点...",
+    "ai_points_done": "随机点生成完成",
+    "ai_task_done": "AI 任务执行完成",
+    "ai_task_failed": "AI 任务执行失败：{0}",
+    "ai_worker_error": "后台运算出错：{0}"
   }
 }

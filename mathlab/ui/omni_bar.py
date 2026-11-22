@@ -72,24 +72,38 @@ class OmniBar(QWidget):
 
     search_submitted = Signal(str)
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, *, lazy: bool = True):
         super().__init__(parent)
         # ✨ 魔法标志：脱离主窗体、无边框、永远置顶、背景透明
         self.setWindowFlags(Qt.WindowType.Tool | Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
 
-        self._build_ui()
-        self._setup_animations()
+        self._web_initialized = False
+        self.web_view = None
+        self.channel = None
+        self.backend = None
 
-    def _build_ui(self):
-        main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(0, 0, 0, 0)
+        self._main_layout = QVBoxLayout(self)
+        self._main_layout.setContentsMargins(0, 0, 0, 0)
+        self.setWindowOpacity(0.0)
+        self.hide()
+
+        self._setup_animations()
+        # R-24：默认延迟到首次 summon 再构造 QWebEngineView，避免冷启动同步拉起 Chromium
+        if not lazy:
+            self._ensure_web_view()
+
+    def _ensure_web_view(self) -> None:
+        """首次唤起时按需初始化 WebEngine 与 QWebChannel。"""
+        if self._web_initialized:
+            return
+        self._web_initialized = True
 
         # 核心载体：WebEngine 视图，渲染 JS/TS 前端
         self.web_view = QWebEngineView(self)
         self.web_view.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.web_view.page().setBackgroundColor(QColor(0, 0, 0, 0))
-        main_layout.addWidget(self.web_view)
+        self._main_layout.addWidget(self.web_view)
 
         # QWebChannel 桥接
         self.channel = QWebChannel()
@@ -103,16 +117,13 @@ class OmniBar(QWidget):
         # 页面加载完成后，若当前正处于召唤态则自动聚焦输入框
         self.web_view.loadFinished.connect(self._on_load_finished)
 
-        # 默认隐藏
-        self.setWindowOpacity(0.0)
-        self.hide()
-
     def _on_load_finished(self, ok: bool):
         if ok and self.isVisible():
             self._focus_input()
 
     def _focus_input(self):
-        self.web_view.page().runJavaScript("if (window.omni) window.omni.focusInput();")
+        if self.web_view is not None:
+            self.web_view.page().runJavaScript("if (window.omni) window.omni.focusInput();")
 
     def _setup_animations(self):
         # 透明度渐变动画
@@ -124,6 +135,7 @@ class OmniBar(QWidget):
 
     def summon(self, parent_rect: QRect):
         """召唤命令盘：居中浮现"""
+        self._ensure_web_view()
         width = 600
         height = 80
         x = parent_rect.x() + (parent_rect.width() - width) // 2
@@ -159,7 +171,8 @@ class OmniBar(QWidget):
             return
         self.hide()
         # 清空前端输入框，避免下次召唤残留上次文本
-        self.web_view.page().runJavaScript("if (window.omni) window.omni.setValue('');")
+        if self.web_view is not None:
+            self.web_view.page().runJavaScript("if (window.omni) window.omni.setValue('');")
 
     # --- 核心交互 UX ---
     def focusOutEvent(self, event):

@@ -27,8 +27,8 @@ from pathlib import Path
 # 取值必须等于当前实测值。此前设的是"实测值 + 余量"（103/264），
 # 后果是新增内联样式可以一路混到余量用完，守卫形同放行。
 THRESHOLDS: dict[str, int] = {
-    "inline": 63,  # 基线 173 → B1 实测 103 → 本轮收敛至 63
-    "hex": 170,  # 基线 411 → B1 实测 263 → 本轮收敛至 170
+    "inline": 4,  # 基线 173 → B1 103 → B2 63 → B3 收敛至 4（仅动态色板 ALLOWED-INLINE）
+    "hex": 15,  # 基线 411 → B1 263 → B2 170 → B3 收敛至 15
     "unconnected_actions": 0,  # S3：未连接 QAction（A-07 目标 0）
 }
 

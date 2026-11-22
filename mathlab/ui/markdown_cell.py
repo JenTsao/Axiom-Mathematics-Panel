@@ -56,15 +56,12 @@ class MarkdownCellWidget(QFrame):
         self.toolbar_layout.setContentsMargins(10, 0, 10, 0)
 
         self.type_label = QLabel("Markdown 文本")
-        self.type_label.setStyleSheet("color: #858585; font-size: 11px;")
+        self.type_label.setObjectName("mdTypeLabel")
 
         self.btn_edit = QPushButton("✎ 编辑")
         self.btn_delete = QPushButton("🗑 删除")
         for btn in [self.btn_edit, self.btn_delete]:
-            btn.setStyleSheet("""
-                QPushButton { background: transparent; color: #cccccc; border: none; padding: 4px; }
-                QPushButton:hover { background: #3c3c3c; border-radius: 4px; color: #4EC9B0; }
-            """)
+            btn.setObjectName("mdActionBtn")
             btn.setCursor(Qt.PointingHandCursor)
 
         self.btn_edit.clicked.connect(self.switch_to_edit)
@@ -81,12 +78,9 @@ class MarkdownCellWidget(QFrame):
 
         # ── 2. 编辑模式: 纯文本输入框 ──
         self.input_editor = MarkdownTextEdit(self)
+        self.input_editor.setObjectName("mdEditor")
         self.input_editor.setFont(QFont("Consolas", 12))
         self.input_editor.setMinimumHeight(60)
-        self.input_editor.setStyleSheet("""
-            QTextEdit { background-color: #1e1e1e; color: #d4d4d4; border: 1px dashed #3c3c3c; border-radius: 4px; padding: 8px; }
-            QTextEdit:focus { border: 1px solid #007acc; }
-        """)
         self.input_editor.textChanged.connect(self._adjust_editor_height)
         self.input_editor.textChanged.connect(lambda: self.code_synced.emit(self.input_editor.toPlainText()))
 
@@ -167,12 +161,9 @@ class MarkdownCellWidget(QFrame):
         super().leaveEvent(event)
 
     def set_focused(self, is_focused):
-        if is_focused:
-            self.setStyleSheet("MarkdownCellWidget { border-left: 3px solid #007acc; background-color: #252526; }")
-        else:
-            self.setStyleSheet(
-                "MarkdownCellWidget { border-left: 3px solid transparent; background-color: transparent; }"
-            )
+        self.setProperty("focused", "true" if is_focused else "false")
+        self.style().unpolish(self)
+        self.style().polish(self)
 
     def mousePressEvent(self, event):
         self.set_focused(True)

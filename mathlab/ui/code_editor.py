@@ -199,9 +199,6 @@ class AutocompleteTextEdit(QWidget):
     def setPlaceholderText(self, text):
         pass
 
-    def setStyleSheet(self, style):
-        super().setStyleSheet(style)
-
     def _build_ui(self):
         # 使用绝对定位来放置悬浮按钮，因此主 Layout 不再管理它
         layout = QVBoxLayout(self)
@@ -220,14 +217,7 @@ class AutocompleteTextEdit(QWidget):
 
         # --- 新增：智能修复悬浮按钮 ---
         self.fix_btn = QPushButton("✨ AI 自动修复", self.web_view)
-        self.fix_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #7B61FF; color: white;
-                border-radius: 15px; padding: 5px 15px;
-                font-weight: bold; font-family: 'Segoe UI', Arial;
-            }
-            QPushButton:hover { background-color: #8C75FF; }
-        """)
+        self.fix_btn.setObjectName("aiFixBtn")
         self.fix_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.fix_btn.hide()  # 初始隐藏
         self.fix_btn.clicked.connect(self._start_ai_fix)
@@ -343,15 +333,7 @@ class MonacoCodeEditor(QWidget):
         from PySide6.QtWidgets import QPlainTextEdit
 
         self._editor = QPlainTextEdit()
-        self._editor.setStyleSheet("""
-            QPlainTextEdit {
-                background-color: #1e1e1e;
-                color: #d4d4d4;
-                border: 1px solid #3c3c3c;
-                font-family: Consolas, 'Courier New', monospace;
-                font-size: 13px;
-            }
-        """)
+        self._editor.setObjectName("monacoEditor")
         self._editor.textChanged.connect(self._on_text_changed)
         layout.addWidget(self._editor)
 

@@ -23,28 +23,17 @@ class SmoothCollapsibleBox(QWidget):
     def __init__(self, title="", parent=None):
         super().__init__(parent)
         self.toggle_btn = QToolButton(self)
+        self.toggle_btn.setObjectName("collapsibleToggle")
         self.toggle_btn.setText(title)
         self.toggle_btn.setCheckable(True)
         self.toggle_btn.setChecked(True)
-        self.toggle_btn.setStyleSheet("""
-            QToolButton {
-                border: none;
-                font-weight: bold;
-                color: #333;
-                text-align: left;
-                padding: 8px;
-                background-color: #F0F0F0;
-                border-radius: 4px;
-            }
-            QToolButton:hover { background-color: #E0E0E0; }
-        """)
         self.toggle_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
         self.toggle_btn.setArrowType(Qt.ArrowType.DownArrow)
         self.toggle_btn.clicked.connect(self.on_toggle)
 
         # 内容区容器
         self.content_area = QScrollArea(self)
-        self.content_area.setStyleSheet("QScrollArea { border: none; background: transparent; }")
+        self.content_area.setObjectName("collapsibleContent")
         self.content_area.setSizePolicy(
             self.content_area.sizePolicy().Policy.Expanding,
             self.content_area.sizePolicy().Policy.Fixed,

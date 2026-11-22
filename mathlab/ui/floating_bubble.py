@@ -14,17 +14,9 @@ class FloatingBubbleWidget(QWidget):
         layout.setContentsMargins(15, 15, 15, 15)
 
         self.label = QLabel(text)
+        self.label.setObjectName("floatingBubbleLabel")
         self.label.setWordWrap(True)
-        self.label.setStyleSheet("""
-            QLabel {
-                background-color: rgba(255, 255, 255, 0.95);
-                border: 1px solid rgba(0, 0, 0, 0.1);
-                border-radius: 8px;
-                padding: 10px;
-                color: #333;
-                font-size: 13px;
-            }
-        """)
+        # 样式由 styles.qss `QLabel#floatingBubbleLabel` 提供（三主题自适应）
         # 注意：高级做法是用 paintEvent 画一个带箭头的气泡框，这里用圆角矩形平替
         layout.addWidget(self.label)
         self.setMaximumWidth(250)  # 限制气泡宽度，防止遮挡过多画面

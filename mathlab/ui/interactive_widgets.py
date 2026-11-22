@@ -22,21 +22,18 @@ class MathSlider(QWidget):
 
         # 1. 变量名
         self.label_name = QLabel(f"<b>{self.name}</b>")
-        self.label_name.setStyleSheet("color: #4EC9B0; width: 50px;")  # 青色高亮
+        self.label_name.setObjectName("mathSliderName")
 
-        # 2. 滑块本体 (极客样式定制)
+        # 2. 滑块本体（样式由全局 styles.qss QSlider 提供）
         self.slider = QSlider(Qt.Orientation.Horizontal)
         self.slider.setMinimum(int(self.min_val * self.scale_factor))
         self.slider.setMaximum(int(self.max_val * self.scale_factor))
         self.slider.setValue(int(current_val * self.scale_factor))
-        self.slider.setStyleSheet("""
-            QSlider::groove:horizontal { border: 1px solid #333; height: 6px; background: #2d2d2d; border-radius: 3px; }
-            QSlider::handle:horizontal { background: #007acc; width: 14px; margin: -4px 0; border-radius: 7px; }
-        """)
 
         # 3. 实时数值显示
         self.label_val = QLabel(f"{current_val:.2f}")
-        self.label_val.setStyleSheet("color: #d4d4d4; width: 40px; text-align: right;")
+        self.label_val.setObjectName("mathSliderValue")
+        self.label_val.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
 
         self.layout.addWidget(self.label_name)
         self.layout.addWidget(self.slider)

@@ -565,5 +565,25 @@
       "delete": "Delete object",
       "auto": "Edit operation"
     }
+  },
+  "toast": {
+    "undone": "Undid last action",
+    "redone": "Redid action",
+    "theme_switched": "Switched to {0} theme",
+    "layout_reset": "Default panel layout restored",
+    "project_saved": "Project saved",
+    "project_opened": "Project opened",
+    "exported": "Export complete",
+    "ai_fit_running": "Training {0} model...",
+    "ai_fit_done": "Model fitting complete",
+    "ai_cluster_running": "Running {0} clustering...",
+    "ai_cluster_done": "Clustering complete",
+    "ai_recognize_running": "Recognizing handwritten digit...",
+    "ai_recognize_done": "Digit recognition complete",
+    "ai_points_running": "Generating random points...",
+    "ai_points_done": "Random points generated",
+    "ai_task_done": "AI task completed",
+    "ai_task_failed": "AI task failed: {0}",
+    "ai_worker_error": "Background task error: {0}"
   }
 }
