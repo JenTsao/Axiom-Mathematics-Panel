@@ -2,7 +2,7 @@
 # 与 mathlab/requirements.txt、mathlab/setup.py 保持同一套版本下界；
 # 一致性由 mathlab/tests/unit/test_dependency_parity.py 守护。
 PySide6>=6.6.0
-numpy>=1.26
+numpy>=2.5.4
 sympy>=1.12
 scipy>=1.11
 scikit-learn>=1.3
