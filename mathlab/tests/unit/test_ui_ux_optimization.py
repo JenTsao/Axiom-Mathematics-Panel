@@ -240,3 +240,39 @@ class TestB3TokenizedWidgets:
         assert algo.scene.backgroundBrush().color().name().upper() == THEME_TOKENS["light"]["bg.canvas"].upper()
         theme_signals.theme_changed.emit("dark")
         assert algo.scene.backgroundBrush().color().name().upper() == THEME_TOKENS["dark"]["bg.canvas"].upper()
+
+
+class TestEventFilterTeardownSafety:
+    """回归：PySide6 析构/样式广播期间 eventFilter 不应因属性已清空抛 AttributeError。"""
+
+    @pytest.mark.qt
+    def test_event_filters_safe_when_attributes_cleared(self, qtbot):
+        from PySide6.QtCore import QEvent
+
+        from mathlab.ui.command_bar import CommandPalette
+        from mathlab.ui.console import PythonConsole
+        from mathlab.ui.math_console import MathConsole
+        from mathlab.ui.toast import ToastManager
+
+        ev = QEvent(QEvent.Type.StyleChange)
+
+        palette = CommandPalette(command_manager=None)
+        qtbot.addWidget(palette)
+        del palette._input
+        assert palette.eventFilter(QWidget(), ev) is False
+
+        console = PythonConsole()
+        qtbot.addWidget(console)
+        del console.input_line
+        assert console.eventFilter(QWidget(), ev) is False
+
+        mc = MathConsole()
+        qtbot.addWidget(mc)
+        del mc._input
+        assert mc.eventFilter(QWidget(), ev) is False
+
+        host = QWidget()
+        qtbot.addWidget(host)
+        mgr = ToastManager(host)
+        del mgr._host
+        assert mgr.eventFilter(host, ev) is False

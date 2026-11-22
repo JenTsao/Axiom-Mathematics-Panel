@@ -167,7 +167,10 @@ class MathConsole(QDockWidget):
     # ─────────────────────────────────────────────────────────────────────────
 
     def eventFilter(self, obj, event) -> bool:
-        if obj is self._input and event.type() == QEvent.KeyPress:
+        input_widget = getattr(self, "_input", None)
+        if input_widget is None:
+            return False
+        if obj is input_widget and event.type() == QEvent.KeyPress:
             key = event.key()
             if key == Qt.Key_Up:
                 self._navigate_history(-1)

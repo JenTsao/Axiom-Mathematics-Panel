@@ -136,12 +136,19 @@ class CommandPalette(QWidget):
         self._do_update_list()
 
     def hide(self):
-        self._input.clear()
+        input_widget = getattr(self, "_input", None)
+        if input_widget is not None:
+            input_widget.clear()
         super().hide()
 
     # ── 事件过滤（键盘导航 + 点击外部关闭） ────────────────────────
     def eventFilter(self, obj, event):
-        if obj is self._input and event.type() == QEvent.KeyPress:
+        # Qt 析构或样式广播期间，Python 侧 __dict__ 可能已清理，先防御性取值
+        input_widget = getattr(self, "_input", None)
+        if input_widget is None:
+            return False
+
+        if obj is input_widget and event.type() == QEvent.KeyPress:
             key = event.key()
             if key == Qt.Key_Escape:
                 self.hide()

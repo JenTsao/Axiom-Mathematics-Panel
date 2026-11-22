@@ -235,6 +235,9 @@ class ToastManager(QObject):
             y_cursor -= self.SPACING
 
     def eventFilter(self, watched: QObject, event: QEvent) -> bool:
-        if watched is self._host and event.type() in (QEvent.Type.Resize, QEvent.Type.Show):
+        host = getattr(self, "_host", None)
+        if host is None:
+            return False
+        if watched is host and event.type() in (QEvent.Type.Resize, QEvent.Type.Show):
             self._reposition()
         return super().eventFilter(watched, event)

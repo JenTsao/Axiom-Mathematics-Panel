@@ -83,7 +83,9 @@ class PythonConsole(QDockWidget):
         self.append_prompt()
 
     def eventFilter(self, obj, event):
-        if obj == self.input_line:
+        # Qt 析构或全局 StyleChange 广播期间，Python 侧属性可能已被清理
+        input_line = getattr(self, "input_line", None)
+        if input_line is not None and obj == input_line:
             try:
                 if event.type() == QEvent.KeyPress:
                     if event.key() == Qt.Key_Up:
