@@ -1,0 +1,5 @@
+# Historical commit df1b90a (2026-06-22) contained a DeepSeek test key that was
+# removed in b84d595 and is no longer present in HEAD. Exempt only this exact
+# historical fingerprint (assuming the key has been revoked/rotated) rather than
+# rewriting public git history.
+df1b90a06db45542c73df3b20647fecd2a9e653c:mathlab/core/ai_manager.py:generic-api-key:705
